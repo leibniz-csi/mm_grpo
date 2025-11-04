@@ -13,9 +13,12 @@
 # limitations under the License.
 # ============================================================================
 
+from .registry import get_reward_manager_cls, register  # noqa: I001
 from .diffusion import DiffusionRewardManager
 
 # Note(haibin.lin): no need to include all reward managers here in case of complicated dependencies
 __all__ = [
     "DiffusionRewardManager",
+    "register",
+    "get_reward_manager_cls",
 ]

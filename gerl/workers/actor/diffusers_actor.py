@@ -29,7 +29,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.tensor import DTensor
 
 from gerl import DataProto
-from verl.trainer.ppo.core_algos import get_policy_loss_fn
+from gerl.trainer.ppo.core_algos import get_policy_loss_fn
 from verl.utils.device import get_device_id, get_device_name
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
 from verl.utils.profiler import GPUMemoryLogger

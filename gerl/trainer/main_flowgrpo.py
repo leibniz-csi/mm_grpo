@@ -24,9 +24,9 @@ import ray
 from omegaconf import OmegaConf
 
 from gerl.trainer.ppo.ray_diffusion_trainer import RayDiffusionPPOTrainer
+from gerl.trainer.ppo.reward import load_reward_manager
 from verl.experimental.dataset.sampler import AbstractSampler
 from verl.trainer.constants_ppo import get_ppo_ray_runtime_env
-from verl.trainer.ppo.reward import load_reward_manager
 from verl.trainer.ppo.utils import need_critic, need_reference_policy
 from verl.utils.config import validate_config
 from verl.utils.device import is_cuda_available
