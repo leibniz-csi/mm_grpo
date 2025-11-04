@@ -22,9 +22,10 @@ from verl.base_config import BaseConfig
 from verl.trainer.config import CheckpointConfig
 from verl.utils.profiler.config import ProfilerConfig
 
-from .engine import FSDPEngineConfig # McoreEngineConfig
-from .model import HFModelConfig
-from .optimizer import OptimizerConfig
+from verl.workers.config.actor import PolicyLossConfig
+from verl.workers.config.engine import FSDPEngineConfig # McoreEngineConfig
+from verl.workers.config.model import HFModelConfig
+from verl.workers.config.optimizer import OptimizerConfig
 
 __all__ = ["DiffusionActorConfig", "DiffusionFSDPActorConfig"]
 
