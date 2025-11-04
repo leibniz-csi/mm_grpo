@@ -26,7 +26,10 @@ import torch
 from diffusers import StableDiffusion3Pipeline
 from diffusers.callbacks import MultiPipelineCallbacks, PipelineCallback
 from diffusers.image_processor import PipelineImageInput
-from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import calculate_shift, retrieve_timesteps
+from diffusers.pipelines.stable_diffusion_3.pipeline_stable_diffusion_3 import (
+    calculate_shift,
+    retrieve_timesteps,
+)
 from diffusers.utils import BaseOutput, is_torch_xla_available
 
 if is_torch_xla_available():
@@ -52,13 +55,17 @@ class StableDiffusion3PipelineWithLogProbOutput(BaseOutput):
     all_latents: list[torch.FloatTensor]
     all_log_probs: list[torch.FloatTensor]
     all_timesteps: list[int]
+    prompt_embeds: torch.FloatTensor
+    pooled_prompt_embeds: torch.FloatTensor
+    negative_prompt_embeds: Optional[torch.FloatTensor] = None
+    negative_pooled_prompt_embeds: Optional[torch.FloatTensor] = None
 
 
 class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
     @torch.no_grad()
     def __call__(
         self,
-        prompt: str | list[str] = None,
+        prompt: Optional[str | list[str]] = None,
         prompt_2: Optional[str | list[str]] = None,
         prompt_3: Optional[str | list[str]] = None,
         height: Optional[int] = None,
@@ -69,7 +76,7 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         negative_prompt: Optional[str | list[str]] = None,
         negative_prompt_2: Optional[str | list[str]] = None,
         negative_prompt_3: Optional[str | list[str]] = None,
-        num_images_per_prompt: Optional[int] = 1,
+        num_images_per_prompt: int = 1,
         generator: Optional[torch.Generator | list[torch.Generator]] = None,
         latents: Optional[torch.FloatTensor] = None,
         prompt_embeds: Optional[torch.FloatTensor] = None,
@@ -85,7 +92,7 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         callback_on_step_end: Optional[Callable[[int, int, dict], None]] = None,
         callback_on_step_end_tensor_inputs: Sequence[str] = ("latents",),
         max_sequence_length: int = 256,
-        skip_guidance_layers: list[int] = None,
+        skip_guidance_layers: Optional[list[int]] = None,
         skip_layer_guidance_scale: float = 2.8,
         skip_layer_guidance_stop: float = 0.2,
         skip_layer_guidance_start: float = 0.01,
@@ -134,11 +141,15 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         elif prompt is not None and isinstance(prompt, list):
             batch_size = len(prompt)
         else:
-            batch_size = prompt_embeds.shape[0]
+            batch_size = prompt_embeds.shape[0]  # type: ignore
 
         device = self._execution_device
 
-        lora_scale = self.joint_attention_kwargs.get("scale", None) if self.joint_attention_kwargs is not None else None
+        lora_scale = (
+            self.joint_attention_kwargs.get("scale", None)
+            if self.joint_attention_kwargs is not None
+            else None
+        )
         (
             prompt_embeds,
             negative_prompt_embeds,
@@ -168,7 +179,9 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
                 original_prompt_embeds = prompt_embeds
                 original_pooled_prompt_embeds = pooled_prompt_embeds
             prompt_embeds = torch.cat([negative_prompt_embeds, prompt_embeds], dim=0)
-            pooled_prompt_embeds = torch.cat([negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0)
+            pooled_prompt_embeds = torch.cat(
+                [negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0
+            )
 
         # 4. Prepare latent variables
         num_channels_latents = self.transformer.config.in_channels
@@ -207,18 +220,24 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
             sigmas=sigmas,
             **scheduler_kwargs,
         )
-        num_warmup_steps = max(len(timesteps) - num_inference_steps * self.scheduler.order, 0)
+        num_warmup_steps = max(
+            len(timesteps) - num_inference_steps * self.scheduler.order, 0
+        )
         self._num_timesteps = len(timesteps)
 
         if sde_window_size > 0:
-            start = random.randint(sde_window_range[0], sde_window_range[1] - sde_window_size)
+            start = random.randint(
+                sde_window_range[0], sde_window_range[1] - sde_window_size
+            )
             end = start + sde_window_size
             sde_window = (start, end)
         else:
             sde_window = (0, len(timesteps) - 1)
 
         # 6. Prepare image embeddings
-        if (ip_adapter_image is not None and self.is_ip_adapter_active) or ip_adapter_image_embeds is not None:
+        if (
+            ip_adapter_image is not None and self.is_ip_adapter_active
+        ) or ip_adapter_image_embeds is not None:
             ip_adapter_image_embeds = self.prepare_ip_adapter_image_embeds(
                 ip_adapter_image,
                 ip_adapter_image_embeds,
@@ -228,9 +247,13 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
             )
 
             if self.joint_attention_kwargs is None:
-                self._joint_attention_kwargs = {"ip_adapter_image_embeds": ip_adapter_image_embeds}
+                self._joint_attention_kwargs = {
+                    "ip_adapter_image_embeds": ip_adapter_image_embeds
+                }
             else:
-                self._joint_attention_kwargs.update(ip_adapter_image_embeds=ip_adapter_image_embeds)
+                self._joint_attention_kwargs.update(  # type: ignore
+                    ip_adapter_image_embeds=ip_adapter_image_embeds
+                )
 
         # 7. Denoising loop
         all_latents = []
@@ -241,17 +264,21 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
                 if self.interrupt:
                     continue
                 if i < sde_window[0]:
-                    cur_noise_level = 0
+                    cur_noise_level = 0.0
                 elif i == sde_window[0]:
                     cur_noise_level = noise_level
                     all_latents.append(latents)
                 elif i > sde_window[0] and i < sde_window[1]:
                     cur_noise_level = noise_level
                 else:
-                    cur_noise_level = 0
+                    cur_noise_level = 0.0
 
                 # expand the latents if we are doing classifier free guidance
-                latent_model_input = torch.cat([latents] * 2) if self.do_classifier_free_guidance else latents
+                latent_model_input = (
+                    torch.cat([latents] * 2)
+                    if self.do_classifier_free_guidance
+                    else latents
+                )
                 # broadcast to batch dimension in a way that's compatible with ONNX/Core ML
                 timestep = t.expand(latent_model_input.shape[0])
 
@@ -267,7 +294,9 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
                 # perform guidance
                 if self.do_classifier_free_guidance:
                     noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                    noise_pred = noise_pred_uncond + self.guidance_scale * (noise_pred_text - noise_pred_uncond)
+                    noise_pred = noise_pred_uncond + self.guidance_scale * (
+                        noise_pred_text - noise_pred_uncond
+                    )
                     should_skip_layers = (
                         True
                         if i > num_inference_steps * skip_layer_guidance_start
@@ -287,13 +316,20 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
                             skip_layers=skip_guidance_layers,
                         )[0]
                         noise_pred = (
-                            noise_pred + (noise_pred_text - noise_pred_skip_layers) * self._skip_layer_guidance_scale
+                            noise_pred
+                            + (noise_pred_text - noise_pred_skip_layers)
+                            * self._skip_layer_guidance_scale
                         )
 
                 # compute the previous noisy sample x_t -> x_t-1
                 latents_dtype = latents.dtype
                 latents, log_prob, _, _ = self.scheduler.step(
-                    noise_pred, t, latents, noise_level=cur_noise_level, sde_type=sde_type, return_dict=False
+                    noise_pred,
+                    t,
+                    latents,
+                    noise_level=cur_noise_level,
+                    sde_type=sde_type,
+                    return_dict=False,
                 )
 
                 if latents.dtype != latents_dtype:
@@ -305,11 +341,13 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
                     callback_kwargs = {}
                     for k in callback_on_step_end_tensor_inputs:
                         callback_kwargs[k] = locals()[k]
-                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)
+                    callback_outputs = callback_on_step_end(self, i, t, callback_kwargs)  # type: ignore
 
-                    latents = callback_outputs.pop("latents", latents)
-                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)
-                    pooled_prompt_embeds = callback_outputs.pop("pooled_prompt_embeds", pooled_prompt_embeds)
+                    latents = callback_outputs.pop("latents", latents)  # type: ignore
+                    prompt_embeds = callback_outputs.pop("prompt_embeds", prompt_embeds)  # type: ignore
+                    pooled_prompt_embeds = callback_outputs.pop(  # type: ignore
+                        "pooled_prompt_embeds", pooled_prompt_embeds
+                    )
 
                 if i >= sde_window[0] and i < sde_window[1]:
                     all_latents.append(latents)
@@ -317,7 +355,9 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
                     all_timesteps.append(t)
 
                 # call the callback, if provided
-                if i == len(timesteps) - 1 or ((i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0):
+                if i == len(timesteps) - 1 or (
+                    (i + 1) > num_warmup_steps and (i + 1) % self.scheduler.order == 0
+                ):
                     progress_bar.update()
 
                 if XLA_AVAILABLE:
@@ -327,7 +367,9 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
             image = latents
 
         else:
-            latents = (latents / self.vae.config.scaling_factor) + self.vae.config.shift_factor
+            latents = (
+                latents / self.vae.config.scaling_factor
+            ) + self.vae.config.shift_factor
 
             image = self.vae.decode(latents, return_dict=False)[0]
             image = self.image_processor.postprocess(image, output_type=output_type)
@@ -335,13 +377,32 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         # Offload all models
         self.maybe_free_model_hooks()
 
-        all_latents = torch.concatenate(all_latents)
-        all_log_probs = torch.concatenate(all_log_probs)
-        all_timesteps = torch.concatenate(all_timesteps)
+        all_latents = torch.stack(all_latents, dim=1)
+        all_log_probs = torch.stack(all_log_probs, dim=1)
+        all_timesteps = torch.stack(all_timesteps).unsqueeze(0).expand(batch_size, -1)
+        if self.do_classifier_free_guidance:
+            prompt_embeds = prompt_embeds[:batch_size]
+            pooled_prompt_embeds = pooled_prompt_embeds[:batch_size]
 
         if not return_dict:
-            return (image, all_latents, all_log_probs, all_timesteps)
+            return (
+                image,
+                all_latents,
+                all_log_probs,
+                all_timesteps,
+                prompt_embeds,
+                pooled_prompt_embeds,
+                negative_prompt_embeds,
+                negative_pooled_prompt_embeds,
+            )
 
         return StableDiffusion3PipelineWithLogProbOutput(
-            images=image, all_latents=all_latents, all_log_probs=all_log_probs, all_timesteps=all_timesteps
+            images=image,
+            all_latents=all_latents,
+            all_log_probs=all_log_probs,
+            all_timesteps=all_timesteps,
+            prompt_embeds=prompt_embeds,
+            pooled_prompt_embeds=pooled_prompt_embeds,
+            negative_prompt_embeds=negative_prompt_embeds,
+            negative_pooled_prompt_embeds=negative_pooled_prompt_embeds,
         )

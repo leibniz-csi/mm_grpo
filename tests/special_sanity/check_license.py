@@ -63,7 +63,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Collect all Python files from specified directories
-    pathlist = set(path for path_arg in args.directories for path in get_py_files(path_arg))
+    pathlist = set(
+        path for path_arg in args.directories for path in get_py_files(path_arg)
+    )
 
     for path in pathlist:
         # because path is object not string

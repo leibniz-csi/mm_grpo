@@ -20,16 +20,25 @@ import logging
 import os
 import warnings
 
+import psutil
 import torch
 import torch.distributed
 from omegaconf import DictConfig, OmegaConf, open_dict
 from peft import LoraConfig, get_peft_model
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.api import FullStateDictConfig, ShardedStateDictConfig, StateDictType
+from torch.distributed.fsdp.api import (
+    FullStateDictConfig,
+    ShardedStateDictConfig,
+    StateDictType,
+)
 
 from gerl import DataProto
-from verl.single_controller.base.decorator import Dispatch, make_nd_compute_dataproto_dispatch_fn, register
+from verl.single_controller.base.decorator import (
+    Dispatch,
+    make_nd_compute_dataproto_dispatch_fn,
+    register,
+)
 from verl.utils.activation_offload import enable_activation_offloading
 from verl.utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from verl.utils.config import omega_conf_to_dataclass
@@ -50,6 +59,7 @@ from verl.utils.fsdp_utils import (
     get_shard_placement_fn,
     init_fn,
     load_fsdp_model_to_gpu,
+    load_fsdp_optimizer,
     offload_fsdp_model_to_cpu,
     offload_fsdp_optimizer,
 )
@@ -89,8 +99,11 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
 
-        # TODO: need refactor structure
-        from gerl.workers.rollout.diffusers_rollout.utils import inject_SDE_scheduler_into_pipeline
+        # TODO (Mike): need refactor structure, this is worker module,
+        # we should avoid to import function from specific rollout
+        from gerl.workers.rollout.diffusers_rollout.utils import (
+            inject_SDE_scheduler_into_pipeline,
+        )
 
         assert role in ["actor", "ref"]
 
@@ -108,18 +121,26 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         if self.rank == 0:
             print(f"Model config after override: {actor_model_config}")
 
-        init_context = get_init_weight_context_manager(use_meta_tensor=True, mesh=self.device_mesh)
+        init_context = get_init_weight_context_manager(
+            use_meta_tensor=True, mesh=self.device_mesh
+        )
 
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
-            # TODO: how to pass the actor_model_config into the pipeline?
+            # TODO (Mike): how to pass the actor_model_config into the pipeline?
             pipeline = DiffusionPipeline.from_pretrained(
-                pretrained_model_name_or_path=local_path, torch_dtype=torch_dtype, device_map=get_device_name()
+                pretrained_model_name_or_path=local_path,
+                torch_dtype=torch_dtype,
+                device_map=get_device_name(),
             )
-            inject_SDE_scheduler_into_pipeline(pipeline, pretrained_model_name_or_path=local_path)
+            inject_SDE_scheduler_into_pipeline(
+                pipeline, pretrained_model_name_or_path=local_path
+            )
             if not hasattr(pipeline, "transformer"):
-                raise NotImplementedError("Only Transformer-based diffusion model is supported now")
+                raise NotImplementedError(
+                    "Only Transformer-based diffusion model is supported now"
+                )
 
             actor_module: ModelMixin = pipeline.transformer
 
@@ -136,27 +157,38 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                 if lora_adapter_path is not None:
                     from peft import PeftModel
 
-                    print(f"Loading pre-trained LoRA adapter to {role} from: {lora_adapter_path}")
+                    print(
+                        f"Loading pre-trained LoRA adapter to {role} from: {lora_adapter_path}"
+                    )
 
                     # Copy adapter to local if needed
                     local_adapter_path = copy_to_local(
-                        lora_adapter_path, use_shm=self.config.model.get("use_shm", False)
+                        lora_adapter_path,
+                        use_shm=self.config.model.get("use_shm", False),
                     )
 
-                    actor_module = PeftModel.from_pretrained(actor_module, local_adapter_path, is_trainable=True)
+                    actor_module = PeftModel.from_pretrained(
+                        actor_module, local_adapter_path, is_trainable=True
+                    )
                 else:
-                    print("Applying LoRA to actor module")
                     # Convert config to regular Python types before creating PEFT model
                     lora_config = {
                         "r": self.config.model.lora_rank,
                         "lora_alpha": self.config.model.lora_alpha,
-                        # TODO: make init_lora_weights configurable
+                        # TODO (Mike): make init_lora_weights configurable
                         "init_lora_weights": "gaussian",
-                        "target_modules": convert_to_regular_types(self.config.model.target_modules),
-                        "exclude_modules": convert_to_regular_types(self.config.model.exclude_modules),
+                        "target_modules": convert_to_regular_types(
+                            self.config.model.target_modules
+                        ),
+                        "exclude_modules": convert_to_regular_types(
+                            self.config.model.exclude_modules
+                        ),
+                        # TODO (Mike): double check default bias value
                         "bias": "none",
                     }
-                    actor_module = get_peft_model(actor_module, LoraConfig(**lora_config))
+                    actor_module = get_peft_model(
+                        actor_module, LoraConfig(**lora_config)
+                    )
 
         self.use_orig_params = fsdp_config.get("use_orig_params", False)
 
@@ -170,15 +202,25 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         # We wrap FSDP for rollout as well
         mixed_precision_config = fsdp_config.get("mixed_precision", None)
         if mixed_precision_config is not None:
-            param_dtype = PrecisionType.to_dtype(mixed_precision_config.get("param_dtype", "bf16"))
-            reduce_dtype = PrecisionType.to_dtype(mixed_precision_config.get("reduce_dtype", "fp32"))
-            buffer_dtype = PrecisionType.to_dtype(mixed_precision_config.get("buffer_dtype", "fp32"))
+            param_dtype = PrecisionType.to_dtype(
+                mixed_precision_config.get("param_dtype", "bf16")
+            )
+            reduce_dtype = PrecisionType.to_dtype(
+                mixed_precision_config.get("reduce_dtype", "fp32")
+            )
+            buffer_dtype = PrecisionType.to_dtype(
+                mixed_precision_config.get("buffer_dtype", "fp32")
+            )
         else:
             param_dtype = torch.bfloat16
             reduce_dtype = torch.float32
             buffer_dtype = torch.float32
 
-        mixed_precision = MixedPrecision(param_dtype=param_dtype, reduce_dtype=reduce_dtype, buffer_dtype=buffer_dtype)
+        mixed_precision = MixedPrecision(
+            param_dtype=param_dtype,
+            reduce_dtype=reduce_dtype,
+            buffer_dtype=buffer_dtype,
+        )
 
         auto_wrap_policy = get_fsdp_wrap_policy(
             module=actor_module,
@@ -211,23 +253,31 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                 forward_prefetch=fsdp_config.get("forward_prefetch", False),
             )
         elif fsdp_strategy == "fsdp2":
-            assert CPUOffloadPolicy is not None, "PyTorch version >= 2.4 is required for using fully_shard API (FSDP2)"
+            assert CPUOffloadPolicy is not None, (
+                "PyTorch version >= 2.4 is required for using fully_shard API (FSDP2)"
+            )
             mp_policy = MixedPrecisionPolicy(
-                param_dtype=param_dtype, reduce_dtype=reduce_dtype, cast_forward_inputs=True
+                param_dtype=param_dtype,
+                reduce_dtype=reduce_dtype,
+                cast_forward_inputs=True,
             )
             if role == "actor" and fsdp_config.offload_policy:
                 cpu_offload = CPUOffloadPolicy(pin_memory=True)
                 self._is_offload_param = False
                 self._is_offload_optimizer = False
             else:
-                cpu_offload = None if role == "actor" else CPUOffloadPolicy(pin_memory=True)
+                cpu_offload = (
+                    None if role == "actor" else CPUOffloadPolicy(pin_memory=True)
+                )
 
             fsdp_kwargs = {
                 "mesh": fsdp_mesh,
                 "mp_policy": mp_policy,
                 "offload_policy": cpu_offload,
                 "reshard_after_forward": fsdp_config.reshard_after_forward,
-                "shard_placement_fn": get_shard_placement_fn(fsdp_size=self.device_mesh.shape[-1]),
+                "shard_placement_fn": get_shard_placement_fn(
+                    fsdp_size=self.device_mesh.shape[-1]
+                ),
             }
             full_state = actor_module.state_dict()
             apply_fsdp2(actor_module, fsdp_kwargs, fsdp_config)
@@ -237,15 +287,22 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
             raise NotImplementedError(f"not implement {fsdp_strategy}")
 
         if enable_activation_offload:
-            enable_activation_offloading(actor_module_fsdp, fsdp_strategy, enable_gradient_checkpointing)
+            enable_activation_offloading(
+                actor_module_fsdp, fsdp_strategy, enable_gradient_checkpointing
+            )
 
         log_gpu_memory_usage(f"After {role} FSDP init", logger=logger)
 
         # TODO: add more optimizer args into config
         if role == "actor" and optim_config is not None:
-            from verl.utils.torch_functional import get_constant_schedule_with_warmup, get_cosine_schedule_with_warmup
+            from verl.utils.torch_functional import (
+                get_constant_schedule_with_warmup,
+                get_cosine_schedule_with_warmup,
+            )
 
-            actor_optimizer = build_optimizer(actor_module_fsdp.parameters(), optim_config)
+            actor_optimizer = build_optimizer(
+                actor_module_fsdp.parameters(), optim_config
+            )
 
             total_steps = optim_config.get("total_training_steps", 0)
             num_warmup_steps = int(optim_config.get("lr_warmup_steps", -1))
@@ -257,7 +314,9 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                 num_warmup_steps = int(num_warmup_steps_ratio * total_steps)
 
             if self.rank == 0:
-                print(f"Total steps: {total_steps}, num_warmup_steps: {num_warmup_steps}")
+                print(
+                    f"Total steps: {total_steps}, num_warmup_steps: {num_warmup_steps}"
+                )
 
             if lr_scheduler_type == "constant":
                 actor_lr_scheduler = get_constant_schedule_with_warmup(
@@ -272,14 +331,22 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                     num_cycles=num_cycles,
                 )
             else:
-                raise NotImplementedError(f"LR scheduler type {lr_scheduler_type} is not supported")
+                raise NotImplementedError(
+                    f"LR scheduler type {lr_scheduler_type} is not supported"
+                )
 
             log_gpu_memory_usage(f"After {role} optimizer init", logger=logger)
         else:
             actor_optimizer = None
             actor_lr_scheduler = None
 
-        return pipeline, actor_module_fsdp, actor_optimizer, actor_lr_scheduler, actor_model_config
+        return (
+            pipeline,
+            actor_module_fsdp,
+            actor_optimizer,
+            actor_lr_scheduler,
+            actor_model_config,
+        )
 
     def _build_rollout(self, actor_rollout_module):
         # 1. parse rollout and huggingface model config
@@ -290,7 +357,10 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         self.model_config = model_config
 
         # 2. build rollout device mesh
-        infer_tp = self.config.rollout.tensor_model_parallel_size * self.config.rollout.data_parallel_size
+        infer_tp = (
+            self.config.rollout.tensor_model_parallel_size
+            * self.config.rollout.data_parallel_size
+        )
         infer_pp = self.config.rollout.pipeline_model_parallel_size
         infer_world_size = infer_tp * infer_pp
         dp = self.world_size // infer_world_size
@@ -298,40 +368,55 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
             f"rollout world_size: {self.world_size} is not divisible by infer_world_size: {infer_world_size}"
         )
         rollout_device_mesh = init_device_mesh(
-            device_name, mesh_shape=(dp, infer_tp, infer_pp), mesh_dim_names=["dp", "infer_tp", "infer_pp"]
+            device_name,
+            mesh_shape=(dp, infer_tp, infer_pp),
+            mesh_dim_names=["dp", "infer_tp", "infer_pp"],
         )
         rollout_name = self.config.rollout.name
 
         if rollout_name == "hf":
-            self._register_dispatch_collect_info("rollout", dp_rank=self.rank, is_collect=True)
+            self._register_dispatch_collect_info(
+                "rollout", dp_rank=self.rank, is_collect=True
+            )
         else:
             is_collect = (
                 rollout_device_mesh["infer_tp"].get_local_rank() == 0
                 and rollout_device_mesh["infer_pp"].get_local_rank() == 0
             )
             self._register_dispatch_collect_info(
-                "rollout", dp_rank=rollout_device_mesh["dp"].get_local_rank(), is_collect=is_collect
+                "rollout",
+                dp_rank=rollout_device_mesh["dp"].get_local_rank(),
+                is_collect=is_collect,
             )
 
         # 3. init trainer and rollout random states
         self.torch_random_states = get_torch_device().get_rng_state()
         gen_dp_rank = rollout_device_mesh["dp"].get_local_rank()
-        get_torch_device().manual_seed(gen_dp_rank + 1000)  # make sure all tp ranks have the same random states
+        get_torch_device().manual_seed(
+            gen_dp_rank + 1000
+        )  # make sure all tp ranks have the same random states
         self.gen_random_states = get_torch_device().get_rng_state()
         get_torch_device().set_rng_state(self.torch_random_states)
 
         # 4. build rollout model
-        log_gpu_memory_usage(f"Before building {self.config.rollout.name} rollout", logger=logger)
+        log_gpu_memory_usage(
+            f"Before building {self.config.rollout.name} rollout", logger=logger
+        )
         self.rollout = get_rollout_class(rollout_config.name, rollout_config.mode)(
             rollout_module=actor_rollout_module,
             config=rollout_config,
             model_config=model_config,
             device_mesh=rollout_device_mesh,
         )
-        log_gpu_memory_usage(f"After building {self.config.rollout.name} rollout", logger=logger)
+        log_gpu_memory_usage(
+            f"After building {self.config.rollout.name} rollout", logger=logger
+        )
 
         # Full params
-        if torch.distributed.get_world_size() == 1 and fsdp_version(self.actor_module_fsdp) == 1:
+        if (
+            torch.distributed.get_world_size() == 1
+            and fsdp_version(self.actor_module_fsdp) == 1
+        ):
             FSDP.set_state_dict_type(
                 self.actor_module_fsdp,
                 state_dict_type=StateDictType.FULL_STATE_DICT,
@@ -363,8 +448,9 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         # This is used to import external_lib into the huggingface systems
         import_external_libs(self.config.model.get("external_lib", None))
 
-        override_model_config = OmegaConf.to_container(OmegaConf.create(self.config.model.get("override_config", {})))
-        use_remove_padding = self.config.model.get("use_remove_padding", False)
+        override_model_config = OmegaConf.to_container(
+            OmegaConf.create(self.config.model.get("override_config", {}))
+        )
         use_shm = self.config.model.get("use_shm", False)
         use_fused_kernels = self.config.model.get("use_fused_kernels", False)
 
@@ -389,13 +475,16 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                 fsdp_config=fsdp_config,
                 optim_config=optim_config,
                 override_model_config=override_model_config,
-                use_remove_padding=use_remove_padding,
                 use_fused_kernels=use_fused_kernels,
-                enable_gradient_checkpointing=self.config.model.get("enable_gradient_checkpointing", False),
+                enable_gradient_checkpointing=self.config.model.get(
+                    "enable_gradient_checkpointing", False
+                ),
                 trust_remote_code=self.config.model.get("trust_remote_code", False),
                 use_liger=self.config.model.get("use_liger", False),
                 role="actor",
-                enable_activation_offload=self.config.model.get("enable_activation_offload", False),
+                enable_activation_offload=self.config.model.get(
+                    "enable_activation_offload", False
+                ),
             )
 
             # get the original unwrapped module
@@ -404,16 +493,23 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
 
             if self._is_offload_param:
                 offload_fsdp_model_to_cpu(self.actor_module_fsdp)
-                log_gpu_memory_usage("After offload actor model during init", logger=logger)
+                log_gpu_memory_usage(
+                    "After offload actor model during init", logger=logger
+                )
 
             if self._is_offload_optimizer:
                 offload_fsdp_optimizer(optimizer=self.actor_optimizer)
-                log_gpu_memory_usage("After offload actor optimizer during init", logger=logger)
+                log_gpu_memory_usage(
+                    "After offload actor optimizer during init", logger=logger
+                )
 
         if self._is_actor:
             actor_cfg = omega_conf_to_dataclass(self.config.actor)
             self.actor = DiffusersPPOActor(
-                config=actor_cfg, actor_module=self.actor_module_fsdp, actor_optimizer=self.actor_optimizer
+                config=actor_cfg,
+                actor_module=self.actor_module_fsdp,
+                pipeline=self.actor_rollout_module,
+                actor_optimizer=self.actor_optimizer,
             )
 
         if self._is_rollout:
@@ -433,7 +529,6 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                 fsdp_config=omega_conf_to_dataclass(self.config.ref.fsdp_config),
                 optim_config=None,
                 override_model_config=override_model_config,
-                use_remove_padding=use_remove_padding,
                 use_fused_kernels=use_fused_kernels,
                 trust_remote_code=self.config.model.get("trust_remote_code", False),
                 use_liger=self.config.model.get("use_liger", False),
@@ -441,9 +536,12 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
             )[0]
             OmegaConf.set_struct(self.config.ref, True)
             with open_dict(self.config.ref):
-                self.config.ref.use_remove_padding = use_remove_padding
                 self.config.ref.use_fused_kernels = use_fused_kernels
-            self.ref_policy = DiffusersPPOActor(config=self.config.ref, actor_module=self.ref_module_fsdp)
+            self.ref_policy = DiffusersPPOActor(
+                config=self.config.ref,
+                actor_module=self.ref_module_fsdp,
+                pipeline=self.actor_rollout_module,
+            )
 
         if self._is_actor:
             # TODO: support flopscounter
@@ -454,6 +552,52 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                 lr_scheduler=self.actor_lr_scheduler,
                 checkpoint_config=self.config.actor.checkpoint,
             )
+
+    @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="actor"))
+    @DistProfiler.annotate(color="red", role="actor_update")
+    def update_actor(self, data: DataProto):
+        assert self._is_actor
+        if self._is_offload_param:
+            load_fsdp_model_to_gpu(self.actor_module_fsdp)
+        if self._is_offload_optimizer:
+            load_fsdp_optimizer(
+                optimizer=self.actor_optimizer, device_id=get_device_id()
+            )
+
+        data = data.to(
+            "cpu"
+        )  # data will to device with each micro batch on actor.update_policy
+
+        metrics = self.actor.update_policy(data=data)
+        metrics["perf/max_memory_allocated_gb"] = (
+            get_torch_device().max_memory_allocated() / (1024**3)
+        )
+        metrics["perf/max_memory_reserved_gb"] = (
+            get_torch_device().max_memory_reserved() / (1024**3)
+        )
+        metrics["perf/cpu_memory_used_gb"] = psutil.virtual_memory().used / (1024**3)
+
+        lr = self.actor_lr_scheduler.get_last_lr()[0]
+        metrics["actor/lr"] = lr.item() if torch.is_tensor(lr) else lr
+        self.actor_lr_scheduler.step()
+
+        # TODO: here, we should return all metrics
+        output = DataProto(meta_info={"metrics": metrics})
+
+        output = output.to("cpu")
+
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+            log_gpu_memory_usage(
+                "After offload actor model during update_actor", logger=logger
+            )
+        if self._is_offload_optimizer:
+            offload_fsdp_optimizer(optimizer=self.actor_optimizer)
+            log_gpu_memory_usage(
+                "After offload actor optimizer during update_actor", logger=logger
+            )
+
+        return output
 
     @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"))
     @DistProfiler.annotate(color="red", role="rollout_generate")
@@ -477,8 +621,8 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
 
         # We calculate the average timing across all ranks
         # to make sure meta_info["timing"] is the same
-        timing_generate_topk_ratio, timing_generate_min, timing_generate_max = topk_reduce_ratio_min_max(
-            timing_generate["generate_sequences"]
+        timing_generate_topk_ratio, timing_generate_min, timing_generate_max = (
+            topk_reduce_ratio_min_max(timing_generate["generate_sequences"])
         )
         timing_generate = reduce_timing(timing_generate)
         timing_generate.update(
@@ -505,9 +649,13 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         from contextlib import nullcontext
 
         is_lora = data.meta_info.pop("is_lora", False)
-        adapter_ctx = self.actor.actor_module.disable_adapter() if is_lora else nullcontext()
+        adapter_ctx = (
+            self.actor.actor_module.disable_adapter() if is_lora else nullcontext()
+        )
         # we should always recompute old_log_probs when it is HybridEngine
-        data.meta_info["micro_batch_size"] = self.config.rollout.log_prob_micro_batch_size_per_gpu
+        data.meta_info["micro_batch_size"] = (
+            self.config.rollout.log_prob_micro_batch_size_per_gpu
+        )
         # perform recompute log_prob
         with adapter_ctx:
             output = self.actor.compute_log_prob(data=data)
@@ -522,7 +670,9 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
 
         if self._is_offload_param:
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
-            log_gpu_memory_usage("After offload actor model during compute_log_prob", logger=logger)
+            log_gpu_memory_usage(
+                "After offload actor model during compute_log_prob", logger=logger
+            )
 
         return output
 

@@ -29,7 +29,6 @@ def get_textprompt_data():
 
 
 def test_rl_dataset():
-    from verl.utils import hf_tokenizer
     from verl.utils.dataset.rl_dataset import collate_fn
     from gerl.utils.dataset.diffusion_dataset import DiffusionTextPromptDataset
 
@@ -43,7 +42,13 @@ def test_rl_dataset():
     )
     dataset = DiffusionTextPromptDataset(data_files=local_path, config=config)
 
-    dataloader = DataLoader(dataset=dataset, batch_size=16, shuffle=True, drop_last=True, collate_fn=collate_fn)
+    dataloader = DataLoader(
+        dataset=dataset,
+        batch_size=16,
+        shuffle=True,
+        drop_last=True,
+        collate_fn=collate_fn,
+    )
 
     a = next(iter(dataloader))
 

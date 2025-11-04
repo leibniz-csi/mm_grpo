@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 
 
 class DiffusionTextPromptDataset(Dataset):
-    def __init__(self, data_files: str, config: DictConfig, max_samples: int = -1, **kwargs):
+    def __init__(
+        self, data_files: str, config: DictConfig, max_samples: int = -1, **kwargs
+    ):
         self.file_path = os.path.join(data_files)
         self.max_samples = max_samples
         with open(self.file_path) as f:
@@ -42,4 +44,8 @@ class DiffusionTextPromptDataset(Dataset):
         return len(self.prompts)
 
     def __getitem__(self, idx):
-        return {"prompt": self.prompts[idx], "reward_model": {"style": "rule"}, "data_source": "ocr"}
+        return {
+            "prompt": self.prompts[idx],
+            "reward_model": {"style": "rule"},
+            "data_source": "ocr",
+        }

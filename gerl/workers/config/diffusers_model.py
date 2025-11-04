@@ -63,7 +63,7 @@ class DiffusersModelConfig(BaseConfig):
     # path to pre-trained LoRA adapter to load for continued training
     lora_adapter_path: Optional[str] = None
 
-    # TODO: in diffusers, these options are no longer used. Drop it later.
+    # TODO (Mike): in diffusers, these options are no longer used. Drop it later.
     tokenizer_path: Any = None
     trust_remote_code: Any = None
     custom_chat_template: Any = None
@@ -80,4 +80,6 @@ class DiffusersModelConfig(BaseConfig):
 
         self.local_path = copy_to_local(self.path, use_shm=self.use_shm)
         if self.hf_config_path != self.path:
-            self.local_hf_config_path = copy_to_local(self.hf_config_path, use_shm=self.use_shm)
+            self.local_hf_config_path = copy_to_local(
+                self.hf_config_path, use_shm=self.use_shm
+            )

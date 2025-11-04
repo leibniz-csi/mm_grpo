@@ -14,7 +14,7 @@
 # ============================================================================
 
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Optional
 
 from omegaconf import MISSING
 
@@ -23,7 +23,7 @@ from verl.trainer.config import CheckpointConfig
 from verl.utils.profiler.config import ProfilerConfig
 
 from verl.workers.config.actor import PolicyLossConfig
-from verl.workers.config.engine import FSDPEngineConfig # McoreEngineConfig
+from verl.workers.config.engine import FSDPEngineConfig  # McoreEngineConfig
 from verl.workers.config.model import HFModelConfig
 from verl.workers.config.optimizer import OptimizerConfig
 
@@ -105,14 +105,20 @@ class DiffusionActorConfig(BaseConfig):
         assert self.strategy != MISSING
         assert self.rollout_n != MISSING
         if not self.use_dynamic_bsz:
-            if self.ppo_micro_batch_size is not None and self.ppo_micro_batch_size_per_gpu is not None:
+            if (
+                self.ppo_micro_batch_size is not None
+                and self.ppo_micro_batch_size_per_gpu is not None
+            ):
                 raise ValueError(
                     "[actor] You have set both 'actor.ppo_micro_batch_size' AND 'actor.ppo_micro_batch_size_per_gpu'. "
                     "Please remove 'actor.ppo_micro_batch_size' because only '*_ppo_micro_batch_size_per_gpu' is "
                     "supported (the former is deprecated)."
                 )
             else:
-                assert not (self.ppo_micro_batch_size is None and self.ppo_micro_batch_size_per_gpu is None), (
+                assert not (
+                    self.ppo_micro_batch_size is None
+                    and self.ppo_micro_batch_size_per_gpu is None
+                ), (
                     "[actor] Please set at least one of 'actor.ppo_micro_batch_size' or "
                     "'actor.ppo_micro_batch_size_per_gpu' if use_dynamic_bsz is not enabled."
                 )
@@ -126,7 +132,9 @@ class DiffusionActorConfig(BaseConfig):
         if self.loss_agg_mode not in valid_loss_agg_modes:
             raise ValueError(f"Invalid loss_agg_mode: {self.loss_agg_mode}")
 
-    def validate(self, n_gpus: int, train_batch_size: int, model_config: dict = None):
+    def validate(
+        self, n_gpus: int, train_batch_size: int, model_config: Optional[dict] = None
+    ):
         """Validate actor configuration with runtime parameters."""
         if not self.use_dynamic_bsz:
             if train_batch_size < self.ppo_mini_batch_size:
@@ -155,7 +163,9 @@ class DiffusionActorConfig(BaseConfig):
         param_per_gpu = f"{param}_per_gpu"
 
         if mbs is None and mbs_per_gpu is None:
-            raise ValueError(f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'.")
+            raise ValueError(
+                f"[{name}] Please set at least one of '{name}.{param}' or '{name}.{param_per_gpu}'."
+            )
 
         if mbs is not None and mbs_per_gpu is not None:
             raise ValueError(
@@ -217,11 +227,16 @@ class DiffusionFSDPActorConfig(DiffusionActorConfig):
         """Validate FSDP actor configuration parameters."""
         super().__post_init__()
 
-    def validate(self, n_gpus: int, train_batch_size: int, model_config: dict = None):
+    def validate(
+        self, n_gpus: int, train_batch_size: int, model_config: Optional[dict] = None
+    ):
         """Validate FSDP actor configuration with runtime parameters."""
         super().validate(n_gpus, train_batch_size, model_config)
 
-        if self.strategy in {"fsdp", "fsdp2"} and self.ulysses_sequence_parallel_size > 1:
+        if (
+            self.strategy in {"fsdp", "fsdp2"}
+            and self.ulysses_sequence_parallel_size > 1
+        ):
             if model_config and not model_config.get("use_remove_padding", False):
                 raise ValueError(
                     "When using sequence parallelism for actor/ref policy, you must enable `use_remove_padding`."

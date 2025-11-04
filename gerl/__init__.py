@@ -15,11 +15,13 @@
 
 import os
 
-from .protocol import DataProto # FIXME: use our modified version? or change to a new data class name?
+from .protocol import (
+    DataProto,
+)  # FIXME: use our modified version? or change to a new data class name?
+
 version_folder = os.path.dirname(os.path.join(os.path.abspath(__file__)))
 
 with open(os.path.join(version_folder, "version/version")) as f:
     __version__ = f.read().strip()
 
 __all__ = ["DataProto", "__version__"]
-

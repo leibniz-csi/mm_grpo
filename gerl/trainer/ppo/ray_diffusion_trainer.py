@@ -16,6 +16,7 @@
 import uuid
 from collections import defaultdict
 from pprint import pprint
+from typing import Optional
 
 import numpy as np
 import ray
@@ -23,21 +24,61 @@ from omegaconf import OmegaConf
 from tqdm import tqdm
 
 from gerl import DataProto
-from verl.experimental.dataset.sampler import AbstractCurriculumSampler
-from verl.trainer.ppo.core_algos import agg_loss
+from verl.trainer.config import AlgoConfig
+from gerl.trainer.ppo.core_algos import (
+    compute_flow_grpo_outcome_advantage,
+    AdvantageEstimator,
+)
 from verl.trainer.ppo.metric_utils import (
-    compute_data_metrics,
-    compute_throughout_metrics,
-    compute_timing_metrics,
     process_validation_metrics,
 )
-from verl.trainer.ppo.ray_trainer import RayPPOTrainer, apply_kl_penalty, compute_advantage
+from verl.trainer.ppo.ray_trainer import RayPPOTrainer, apply_kl_penalty
 from verl.trainer.ppo.reward import compute_reward, compute_reward_async
-from verl.trainer.ppo.utils import Role
 from verl.utils.checkpoint.checkpoint_manager import should_save_ckpt_esi
 from verl.utils.debug import marked_timer
 from verl.utils.metric import reduce_metrics
 from verl.utils.rollout_skip import RolloutSkip
+
+
+def compute_advantage(
+    data: DataProto,
+    adv_estimator: AdvantageEstimator,
+    gamma: float = 1.0,
+    lam: float = 1.0,
+    num_repeat: int = 1,
+    norm_adv_by_std_in_grpo: bool = True,
+    config: Optional[AlgoConfig] = None,
+) -> DataProto:
+    """Compute advantage estimates for policy optimization.
+
+    This function computes advantage estimates using various estimators like GAE, GRPO, REINFORCE++, etc.
+    The advantage estimates are used to guide policy optimization in RL algorithms.
+
+    Args:
+        data (DataProto): The data containing batched model outputs and inputs.
+        adv_estimator (AdvantageEstimator): The advantage estimator to use (e.g., GAE, GRPO, REINFORCE++).
+        gamma (float, optional): Discount factor for future rewards. Defaults to 1.0.
+        lam (float, optional): Lambda parameter for GAE. Defaults to 1.0.
+        num_repeat (int, optional): Number of times to repeat the computation. Defaults to 1.
+        norm_adv_by_std_in_grpo (bool, optional): Whether to normalize advantages by standard deviation in
+            GRPO. Defaults to True.
+        config (dict, optional): Configuration dictionary for algorithm settings. Defaults to None.
+
+    Returns:
+        DataProto: The updated data with computed advantages and returns.
+    """
+    if adv_estimator == AdvantageEstimator.FLOW_GRPO:
+        # Call compute_grpo_outcome_advantage with parameters matching its definition
+        advantages, returns = compute_flow_grpo_outcome_advantage(
+            instance_level_rewards=data.batch["instance_level_rewards"],
+            index=data.non_tensor_batch["uid"],
+            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
+        )
+        data.batch["advantages"] = advantages
+        data.batch["returns"] = returns
+    else:
+        raise NotImplementedError
+    return data
 
 
 class RayDiffusionPPOTrainer(RayPPOTrainer):
@@ -46,7 +87,7 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
     """
 
     def _get_gen_batch(self, batch: DataProto) -> DataProto:
-        # TODO: to be implemented
+        # TODO (Mike): to be implemented
         return batch
 
     def _validate(self):
@@ -66,12 +107,17 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
 
             if "uid" not in test_batch.non_tensor_batch:
                 test_batch.non_tensor_batch["uid"] = np.array(
-                    [str(uuid.uuid4()) for _ in range(len(test_batch.non_tensor_batch["prompt"]))], dtype=object
+                    [
+                        str(uuid.uuid4())
+                        for _ in range(len(test_batch.non_tensor_batch["prompt"]))
+                    ],
+                    dtype=object,
                 )
 
             # repeat test batch
             test_batch = test_batch.repeat(
-                repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n, interleave=True
+                repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n,
+                interleave=True,
             )
 
             # Store original inputs
@@ -79,19 +125,27 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
 
             ground_truths = [
-                item.non_tensor_batch.get("reward_model", {}).get("ground_truth", None) for item in test_batch
+                item.non_tensor_batch.get("reward_model", {}).get("ground_truth", None)
+                for item in test_batch
             ]
             sample_gts.extend(ground_truths)
 
             test_gen_batch = self._get_gen_batch(test_batch)
 
-            test_gen_batch.meta_info = {"validate": True, "global_steps": self.global_steps}
+            test_gen_batch.meta_info = {
+                "validate": True,
+                "global_steps": self.global_steps,
+            }
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
             if not self.async_rollout_mode:
-                test_output_gen_batch = self.actor_rollout_wg.generate_sequences(test_gen_batch)
+                test_output_gen_batch = self.actor_rollout_wg.generate_sequences(
+                    test_gen_batch
+                )
             else:
-                test_output_gen_batch = self.async_rollout_manager.generate_sequences(test_gen_batch)
+                test_output_gen_batch = self.async_rollout_manager.generate_sequences(
+                    test_gen_batch
+                )
 
             print("validation generation end")
 
@@ -99,7 +153,6 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
             output_images = test_output_gen_batch.batch["responses"]
             sample_outputs.extend(output_images)
 
-            # TODO: add reward evaluation for diffusion model validation
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info["validate"] = True
 
@@ -121,9 +174,15 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
             if "__num_turns__" in test_batch.non_tensor_batch:
                 sample_turns.append(test_batch.non_tensor_batch["__num_turns__"])
 
-            data_source_lst.append(test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0]))
+            data_source_lst.append(
+                test_batch.non_tensor_batch.get(
+                    "data_source", ["unknown"] * reward_tensor.shape[0]
+                )
+            )
 
-        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
+        self._maybe_log_val_generations(
+            inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores
+        )
 
         # dump generations
         val_data_dir = self.config.trainer.get("validation_data_dir", None)
@@ -138,20 +197,32 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
             )
 
         for key_info, lst in reward_extra_infos_dict.items():
-            assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
+            assert len(lst) == 0 or len(lst) == len(sample_scores), (
+                f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
+            )
 
         data_sources = np.concatenate(data_source_lst, axis=0)
 
-        data_src2var2metric2val = process_validation_metrics(data_sources, sample_uids, reward_extra_infos_dict)
+        data_src2var2metric2val = process_validation_metrics(
+            data_sources, sample_uids, reward_extra_infos_dict
+        )
         metric_dict = {}
         for data_source, var2metric2val in data_src2var2metric2val.items():
             core_var = "acc" if "acc" in var2metric2val else "reward"
             for var_name, metric2val in var2metric2val.items():
-                n_max = max([int(name.split("@")[-1].split("/")[0]) for name in metric2val.keys()])
+                n_max = max(
+                    [
+                        int(name.split("@")[-1].split("/")[0])
+                        for name in metric2val.keys()
+                    ]
+                )
                 for metric_name, metric_val in metric2val.items():
                     if (
                         (var_name == core_var)
-                        and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"])
+                        and any(
+                            metric_name.startswith(pfx)
+                            for pfx in ["mean", "maj", "best"]
+                        )
                         and (f"@{n_max}" in metric_name)
                     ):
                         metric_sec = "val-core"
@@ -189,7 +260,9 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
-        if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
+        if self.val_reward_fn is not None and self.config.trainer.get(
+            "val_before_train", True
+        ):
             val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
@@ -202,7 +275,11 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
             rollout_skip.wrap_generate_sequences()
 
         # add tqdm
-        progress_bar = tqdm(total=self.total_training_steps, initial=self.global_steps, desc="Training Progress")
+        progress_bar = tqdm(
+            total=self.total_training_steps,
+            initial=self.global_steps,
+            desc="Training Progress",
+        )
 
         # we start from step 1
         self.global_steps += 1
@@ -232,7 +309,11 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
 
                 # add uid to batch
                 batch.non_tensor_batch["uid"] = np.array(
-                    [str(uuid.uuid4()) for _ in range(len(batch.non_tensor_batch["prompt"]))], dtype=object
+                    [
+                        str(uuid.uuid4())
+                        for _ in range(len(batch.non_tensor_batch["prompt"]))
+                    ],
+                    dtype=object,
                 )
 
                 gen_batch = batch
@@ -240,7 +321,8 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                 # pass global_steps to trace
                 gen_batch.meta_info["global_steps"] = self.global_steps
                 gen_batch_output = gen_batch.repeat(
-                    repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True
+                    repeat_times=self.config.actor_rollout_ref.rollout.n,
+                    interleave=True,
                 )
 
                 is_last_step = self.global_steps >= self.total_training_steps
@@ -248,14 +330,23 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
                         if not self.async_rollout_mode:
-                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch_output)
+                            gen_batch_output = self.actor_rollout_wg.generate_sequences(
+                                gen_batch_output
+                            )
                         else:
-                            gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch_output)
+                            gen_batch_output = (
+                                self.async_rollout_manager.generate_sequences(
+                                    gen_batch_output
+                                )
+                            )
 
                         timing_raw.update(gen_batch_output.meta_info["timing"])
                         gen_batch_output.meta_info.pop("timing", None)
                     # repeat to align with repeated responses in rollout
-                    batch = batch.repeat(repeat_times=self.config.actor_rollout_ref.rollout.n, interleave=True)
+                    batch = batch.repeat(
+                        repeat_times=self.config.actor_rollout_ref.rollout.n,
+                        interleave=True,
+                    )
                     batch = batch.union(gen_batch_output)
 
                     with marked_timer("reward", timing_raw, color="yellow"):
@@ -269,62 +360,59 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                                 data=batch, config=self.config, tokenizer=self.tokenizer
                             )
                         else:
-                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
+                            reward_tensor, reward_extra_infos_dict = compute_reward(
+                                batch, self.reward_fn
+                            )
 
                     # recompute old_log_probs
                     with marked_timer("old_log_prob", timing_raw, color="blue"):
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
-                        entropys = old_log_prob.batch["entropys"]
-                        response_masks = batch.batch["response_mask"]
-                        loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
-                        entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
-                        old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
-                        metrics.update(old_log_prob_metrics)
-                        old_log_prob.batch.pop("entropys")
                         batch = batch.union(old_log_prob)
-
-                        if "rollout_log_probs" in batch.batch.keys():
-                            # TODO: we may want to add diff of probs too.
-                            from verl.utils.debug.metrics import calculate_debug_metrics
-
-                            metrics.update(calculate_debug_metrics(batch))
-
-                    if self.use_reference_policy:
-                        # compute reference log_prob
-                        with marked_timer(str(Role.RefPolicy), timing_raw, color="olive"):
-                            if not self.ref_in_actor:
-                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
-                            else:
-                                ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
-                            batch = batch.union(ref_log_prob)
 
                     # compute values
                     if self.use_critic:
-                        raise NotImplementedError("Diffusion GRPO does not support critic currently.")
+                        raise NotImplementedError(
+                            "Diffusion GRPO does not support critic currently."
+                        )
 
                     with marked_timer("adv", timing_raw, color="brown"):
                         # we combine with rule-based rm
                         reward_extra_infos_dict: dict[str, list]
                         if self.config.reward_model.launch_reward_fn_async:
-                            reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
-                        batch.batch["token_level_scores"] = reward_tensor
+                            reward_tensor, reward_extra_infos_dict = ray.get(
+                                future_reward
+                            )
+                        batch.batch["instance_level_scores"] = reward_tensor
 
                         if reward_extra_infos_dict:
-                            batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
+                            batch.non_tensor_batch.update(
+                                {
+                                    k: np.array(v)
+                                    for k, v in reward_extra_infos_dict.items()
+                                }
+                            )
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:
                             batch, kl_metrics = apply_kl_penalty(
-                                batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty
+                                batch,
+                                kl_ctrl=self.kl_ctrl_in_reward,
+                                kl_penalty=self.config.algorithm.kl_penalty,
                             )
                             metrics.update(kl_metrics)
                         else:
-                            batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
+                            batch.batch["instance_level_rewards"] = batch.batch[
+                                "instance_level_scores"
+                            ]
 
                         # Compute rollout importance sampling weights centrally (once per batch)
                         # This corrects for mismatch between rollout policy and training policy
                         # Also computes mismatch metrics (KL, PPL, etc.)
-                        batch, is_metrics = self.compute_rollout_importance_weights_and_add_to_batch(batch)
+                        batch, is_metrics = (
+                            self.compute_rollout_importance_weights_and_add_to_batch(
+                                batch
+                            )
+                        )
                         # IS and mismatch metrics already have mismatch/ prefix
                         metrics.update(is_metrics)
 
@@ -347,28 +435,39 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                     if self.use_critic:
                         with marked_timer("update_critic", timing_raw, color="pink"):
                             critic_output = self.critic_wg.update_critic(batch)
-                        critic_output_metrics = reduce_metrics(critic_output.meta_info["metrics"])
+                        critic_output_metrics = reduce_metrics(
+                            critic_output.meta_info["metrics"]
+                        )
                         metrics.update(critic_output_metrics)
 
                     # implement critic warmup
                     if self.config.trainer.critic_warmup <= self.global_steps:
                         # update actor
                         with marked_timer("update_actor", timing_raw, color="red"):
-                            batch.meta_info["multi_turn"] = self.config.actor_rollout_ref.rollout.multi_turn.enable
+                            batch.meta_info["multi_turn"] = (
+                                self.config.actor_rollout_ref.rollout.multi_turn.enable
+                            )
                             actor_output = self.actor_rollout_wg.update_actor(batch)
-                        actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
+                        actor_output_metrics = reduce_metrics(
+                            actor_output.meta_info["metrics"]
+                        )
                         metrics.update(actor_output_metrics)
 
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
                     if rollout_data_dir:
-                        self._log_rollout_data(batch, reward_extra_infos_dict, timing_raw, rollout_data_dir)
+                        self._log_rollout_data(
+                            batch, reward_extra_infos_dict, timing_raw, rollout_data_dir
+                        )
 
                 # validate
                 if (
                     self.val_reward_fn is not None
                     and self.config.trainer.test_freq > 0
-                    and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
+                    and (
+                        is_last_step
+                        or self.global_steps % self.config.trainer.test_freq == 0
+                    )
                 ):
                     with marked_timer("testing", timing_raw, color="green"):
                         val_metrics: dict = self._validate()
@@ -389,10 +488,14 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                 # 3. The current step number is a multiple of the save frequency.
                 # 4. The ESI(Elastic Server Instance)/training plan is close to expiration.
                 if self.config.trainer.save_freq > 0 and (
-                    is_last_step or self.global_steps % self.config.trainer.save_freq == 0 or esi_close_to_expiration
+                    is_last_step
+                    or self.global_steps % self.config.trainer.save_freq == 0
+                    or esi_close_to_expiration
                 ):
                     if esi_close_to_expiration:
-                        print("Force saving checkpoint: ESI instance expiration approaching.")
+                        print(
+                            "Force saving checkpoint: ESI instance expiration approaching."
+                        )
                     with marked_timer("save_checkpoint", timing_raw, color="green"):
                         self._save_checkpoint()
 
@@ -421,16 +524,7 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                     }
                 )
                 # collect metrics
-                metrics.update(compute_data_metrics(batch=batch, use_critic=self.use_critic))
-                metrics.update(compute_timing_metrics(batch=batch, timing_raw=timing_raw))
-                # TODO: implement actual tflpo and theoretical tflpo
-                n_gpus = self.resource_pool_manager.get_n_gpus()
-                metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
-                # Note: mismatch metrics (KL, PPL, etc.) are collected at line 1179 after advantage computation
-
-                # this is experimental and may be changed/removed in the future in favor of a general-purpose one
-                if isinstance(self.train_dataloader.sampler, AbstractCurriculumSampler):
-                    self.train_dataloader.sampler.update(batch=batch)
+                # TODO (Mike): add metrics
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
@@ -440,10 +534,12 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
 
                 if (
                     hasattr(self.config.actor_rollout_ref.actor, "profiler")
-                    and self.config.actor_rollout_ref.actor.profiler.tool == "torch_memory"
+                    and self.config.actor_rollout_ref.actor.profiler.tool
+                    == "torch_memory"
                 ):
                     self.actor_rollout_wg.dump_memory_snapshot(
-                        tag=f"post_update_step{self.global_steps}", sub_dir=f"step{self.global_steps}"
+                        tag=f"post_update_step{self.global_steps}",
+                        sub_dir=f"step{self.global_steps}",
                     )
 
                 if is_last_step:

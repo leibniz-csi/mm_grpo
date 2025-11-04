@@ -28,7 +28,9 @@ from verl.workers.reward_manager.abstract import AbstractRewardManager
 class DiffusionRewardManager(AbstractRewardManager):
     """The reward manager."""
 
-    def __init__(self, tokenizer, num_examine, compute_score=None, reward_fn_key="data_source") -> None:
+    def __init__(
+        self, tokenizer, num_examine, compute_score=None, reward_fn_key="data_source"
+    ) -> None:
         """
         Initialize the NaiveRewardManager instance.
 
@@ -42,17 +44,26 @@ class DiffusionRewardManager(AbstractRewardManager):
         self.tokenizer = tokenizer  # Store the tokenizer for decoding token IDs
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
         self.compute_score = compute_score or default_compute_score
-        self.reward_fn_key = reward_fn_key  # Store the key for accessing the data source
+        self.reward_fn_key = (
+            reward_fn_key  # Store the key for accessing the data source
+        )
 
-    def __call__(self, data: DataProto, return_dict: bool = False) -> torch.Tensor | dict[str, Any]:
+    def __call__(
+        self, data: DataProto, return_dict: bool = False
+    ) -> torch.Tensor | dict[str, Any]:
         """We will expand this function gradually based on the available datasets"""
 
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if "rm_scores" in data.batch.keys():
             if return_dict:
                 reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
-                reward_extra_info = {key: data.non_tensor_batch[key] for key in reward_extra_keys}
-                return {"reward_tensor": data.batch["rm_scores"], "reward_extra_info": reward_extra_info}
+                reward_extra_info = {
+                    key: data.non_tensor_batch[key] for key in reward_extra_keys
+                }
+                return {
+                    "reward_tensor": data.batch["rm_scores"],
+                    "reward_extra_info": reward_extra_info,
+                }
             else:
                 return data.batch["rm_scores"]
 
@@ -67,7 +78,9 @@ class DiffusionRewardManager(AbstractRewardManager):
             prompt_str = data_item.non_tensor_batch["prompt"]
             response_images = data_item.batch["responses"]
 
-            ground_truth = data_item.non_tensor_batch["reward_model"].get("ground_truth", None)
+            ground_truth = data_item.non_tensor_batch["reward_model"].get(
+                "ground_truth", None
+            )
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
             extra_info = data_item.non_tensor_batch.get("extra_info", {})
             num_turns = data_item.non_tensor_batch.get("__num_turns__", None)

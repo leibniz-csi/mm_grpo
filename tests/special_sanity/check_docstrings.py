@@ -39,7 +39,11 @@ class DocstringChecker(ast.NodeVisitor):
         """Visit function definitions and check for docstrings."""
         if not node.name.startswith("_") and self.function_nesting_level == 0:
             if not self._has_docstring(node):
-                func_name = f"{self.current_class}.{node.name}" if self.current_class else node.name
+                func_name = (
+                    f"{self.current_class}.{node.name}"
+                    if self.current_class
+                    else node.name
+                )
                 self.missing_docstrings.append((func_name, self.filename, node.lineno))
 
         self.function_nesting_level += 1
@@ -50,7 +54,11 @@ class DocstringChecker(ast.NodeVisitor):
         """Visit async function definitions and check for docstrings."""
         if not node.name.startswith("_") and self.function_nesting_level == 0:
             if not self._has_docstring(node):
-                func_name = f"{self.current_class}.{node.name}" if self.current_class else node.name
+                func_name = (
+                    f"{self.current_class}.{node.name}"
+                    if self.current_class
+                    else node.name
+                )
                 self.missing_docstrings.append((func_name, self.filename, node.lineno))
 
         self.function_nesting_level += 1
@@ -64,7 +72,7 @@ class DocstringChecker(ast.NodeVisitor):
                 self.missing_docstrings.append((node.name, self.filename, node.lineno))
 
         old_class = self.current_class
-        self.current_class = node.name
+        self.current_class = node.name  # type: ignore
         self.generic_visit(node)
         self.current_class = old_class
 
@@ -130,7 +138,9 @@ def main():
     print("=" * 60)
 
     if all_missing_docstrings:
-        print(f"\nSUMMARY: Found {len(all_missing_docstrings)} functions/classes missing docstrings:")
+        print(
+            f"\nSUMMARY: Found {len(all_missing_docstrings)} functions/classes missing docstrings:"
+        )
         print("-" * 60)
 
         by_file = {}
@@ -146,7 +156,9 @@ def main():
 
         print(f"\nTotal missing docstrings: {len(all_missing_docstrings)}")
 
-        raise Exception(f"Found {len(all_missing_docstrings)} functions/classes without proper docstrings!")
+        raise Exception(
+            f"Found {len(all_missing_docstrings)} functions/classes without proper docstrings!"
+        )
 
     else:
         print("\n All functions and classes have proper docstrings!")

@@ -19,7 +19,9 @@ from .pipelines import StableDiffusion3PipelineWithLogProb
 from .schedulers import FlowMatchSDEDiscreteScheduler
 
 
-def inject_SDE_scheduler_into_pipeline(pipeline: DiffusionPipeline, pretrained_model_name_or_path: str):
+def inject_SDE_scheduler_into_pipeline(
+    pipeline: DiffusionPipeline, pretrained_model_name_or_path: str
+):
     if isinstance(pipeline, StableDiffusion3Pipeline):
         # override __call__ method
         type(pipeline).__call__ = StableDiffusion3PipelineWithLogProb.__call__

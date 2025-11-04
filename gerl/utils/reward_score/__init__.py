@@ -44,13 +44,15 @@ def default_compute_score(
     if data_source in [
         "ocr",
     ]:
-        # TODO: temp use, change to API call of OCR later
+        # TODO (Mike): temp use, change to API call of OCR later
         from . import jpeg_imcompressibility
 
         res = jpeg_imcompressibility.compute_score(solution_str, ground_truth)
 
     else:
-        raise NotImplementedError(f"Reward function is not implemented for {data_source=}")
+        raise NotImplementedError(
+            f"Reward function is not implemented for {data_source=}"
+        )
 
     if isinstance(res, dict):
         return res
@@ -74,7 +76,13 @@ def _default_compute_score(
     Legacy function API to be deprecated. Please use `default_compute_score` instead.
     """
     return default_compute_score(
-        data_source, solution_str, ground_truth, extra_info, sandbox_fusion_url, concurrent_semaphore, memory_limit_mb
+        data_source,
+        solution_str,
+        ground_truth,
+        extra_info,
+        sandbox_fusion_url,
+        concurrent_semaphore,
+        memory_limit_mb,
     )
 
 

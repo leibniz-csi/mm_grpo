@@ -45,13 +45,17 @@ class TestActorConfig(unittest.TestCase):
 
         self.assertIsInstance(fsdp_config, DiffusionActorConfig)
 
-
     def test_actor_config_from_yaml(self):
         """Test creating ActorConfig from YAML file."""
         from hydra import compose, initialize_config_dir
 
-        with initialize_config_dir(config_dir=os.path.abspath("verl/trainer/config/actor")):
-            cfg = compose(config_name="actor", overrides=["strategy=fsdp", "ppo_micro_batch_size_per_gpu=128"])
+        with initialize_config_dir(
+            config_dir=os.path.abspath("verl/trainer/config/actor")
+        ):
+            cfg = compose(
+                config_name="actor",
+                overrides=["strategy=fsdp", "ppo_micro_batch_size_per_gpu=128"],
+            )
 
         config = omega_conf_to_dataclass(cfg)
 
@@ -62,8 +66,13 @@ class TestActorConfig(unittest.TestCase):
         """Test creating FSDPActorConfig from YAML file."""
         from hydra import compose, initialize_config_dir
 
-        with initialize_config_dir(config_dir=os.path.abspath("gerl/trainer/config/actor")):
-            cfg = compose(config_name="dp_actor", overrides=["strategy=fsdp2", "ppo_micro_batch_size_per_gpu=128"])
+        with initialize_config_dir(
+            config_dir=os.path.abspath("gerl/trainer/config/actor")
+        ):
+            cfg = compose(
+                config_name="dp_actor",
+                overrides=["strategy=fsdp2", "ppo_micro_batch_size_per_gpu=128"],
+            )
 
         config = omega_conf_to_dataclass(cfg)
 
@@ -145,7 +154,9 @@ class TestActorConfig(unittest.TestCase):
         with self.assertRaises(AttributeError):
             config.clip_ratio = 0.5
 
-        config.ppo_mini_batch_size = 512  # This should work since it's not in frozen fields anymore
+        config.ppo_mini_batch_size = (
+            512  # This should work since it's not in frozen fields anymore
+        )
         self.assertEqual(config.ppo_mini_batch_size, 512)
 
     def test_actor_config_validation_exceptions(self):

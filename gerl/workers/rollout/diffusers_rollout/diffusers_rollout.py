@@ -57,16 +57,20 @@ class DiffusersRollout(BaseRollout):
     @GPUMemoryLogger(role="diffusers rollout spmd", logger=logger)
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
-        # TODO: hard coded, for test only, make is configurable later
+        # TODO (Mike): hard coded, for test only, make is configurable later
         HEIGHT, WIDTH = 512, 512
         input_texts = prompts.non_tensor_batch["prompt"].tolist()
 
         with torch.autocast(device_type=get_device_name(), dtype=torch.bfloat16):
             output = self.rollout_module(
-                input_texts, height=HEIGHT, width=WIDTH, max_sequence_length=self.config.prompt_length, output_type="pt"
+                input_texts,
+                height=HEIGHT,
+                width=WIDTH,
+                max_sequence_length=self.config.prompt_length,
+                output_type="pt",
             )
 
-        # TODO: hard coded, for test only, drop later
+        # TODO (Mike): hard coded, for test only, drop later
         images_pil = output.images.cpu().float().permute(0, 2, 3, 1).numpy()
         images_pil = (images_pil * 255).round().astype("uint8")
         os.makedirs("visual", exist_ok=True)
@@ -81,6 +85,10 @@ class DiffusersRollout(BaseRollout):
                 "latents": output.all_latents,
                 "log_probs": output.all_log_probs,
                 "timesteps": output.all_timesteps,
+                "prompt_embeds": output.prompt_embeds,
+                "pooled_prompt_embeds": output.pooled_prompt_embeds,
+                "negative_prompt_embeds": output.negative_prompt_embeds,
+                "negative_pooled_prompt_embeds": output.negative_pooled_prompt_embeds,
             },
             batch_size=len(output.images),
         )

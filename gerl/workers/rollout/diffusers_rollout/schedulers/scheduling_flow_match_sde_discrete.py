@@ -92,7 +92,11 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
                 otherwise a tuple is returned where the first element is the sample tensor.
         """
 
-        if isinstance(timestep, int) or isinstance(timestep, torch.IntTensor) or isinstance(timestep, torch.LongTensor):
+        if (
+            isinstance(timestep, int)
+            or isinstance(timestep, torch.IntTensor)
+            or isinstance(timestep, torch.LongTensor)
+        ):
             raise ValueError(
                 (
                     "Passing integer indices (e.g. from `enumerate(timesteps)`) as timesteps to"
@@ -109,17 +113,61 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         if prev_sample is not None:
             prev_sample = prev_sample.to(torch.float32)
 
+        prev_sample, log_prob, prev_sample_mean, std_dev_t = self.compute_log_prob(
+            sample=sample,
+            model_output=model_output,
+            generator=generator,
+            per_token_timesteps=per_token_timesteps,
+            noise_level=noise_level,
+            prev_sample=prev_sample,
+            sde_type=sde_type,
+        )
+
+        # upon completion increase step index by one
+        self._step_index += 1
+        if per_token_timesteps is None:
+            # Cast sample back to model compatible dtype
+            prev_sample = prev_sample.to(model_output.dtype)
+
+        if not return_dict:
+            return (prev_sample, log_prob, prev_sample_mean, std_dev_t)
+        return FlowMatchSDEDiscreteSchedulerOutput(
+            prev_sample=prev_sample,
+            log_prob=log_prob,
+            prev_sample_mean=prev_sample_mean,
+            std_dev_t=std_dev_t,
+        )
+
+    def compute_log_prob(
+        self,
+        sample: torch.Tensor,
+        model_output: torch.Tensor,
+        timestep: Optional[torch.FloatTensor] = None,
+        generator: Optional[torch.Generator] = None,
+        per_token_timesteps: Optional[torch.Tensor] = None,
+        noise_level: float = 0.7,
+        prev_sample: Optional[torch.Tensor] = None,
+        sde_type: Optional[str] = "sde",
+    ):
         if per_token_timesteps is not None:
-            raise NotImplementedError("per_token_timesteps is not supported yet for FlowMatchSDEDiscreteScheduler.")
+            raise NotImplementedError(
+                "per_token_timesteps is not supported yet for FlowMatchSDEDiscreteScheduler."
+            )
         else:
-            sigma_idx = self.step_index
+            if timestep is None:
+                sigma_idx = self.step_index
+            else:
+                sigma_idx = self.index_for_timestep(timestep)
             sigma = self.sigmas[sigma_idx]
             sigma_next = self.sigmas[sigma_idx + 1]
             sigma_max = self.sigmas[1].item()
             dt = sigma_next - sigma
 
         if sde_type == "sde":
-            std_dev_t = torch.sqrt(sigma / (1 - torch.where(sigma == 1, sigma_max, sigma))) * noise_level
+            std_dev_t = (
+                torch.sqrt(sigma / (1 - torch.where(sigma == 1, sigma_max, sigma)))
+                * noise_level
+            )
 
             # our sde
             prev_sample_mean = (
@@ -134,21 +182,30 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
                     device=model_output.device,
                     dtype=model_output.dtype,
                 )
-            prev_sample = prev_sample_mean + std_dev_t * torch.sqrt(-1 * dt) * variance_noise
+                prev_sample = (
+                    prev_sample_mean + std_dev_t * torch.sqrt(-1 * dt) * variance_noise
+                )
 
             log_prob = (
-                -((prev_sample.detach() - prev_sample_mean) ** 2) / (2 * ((std_dev_t * torch.sqrt(-1 * dt)) ** 2))
+                -((prev_sample.detach() - prev_sample_mean) ** 2)
+                / (2 * ((std_dev_t * torch.sqrt(-1 * dt)) ** 2))
                 - torch.log(std_dev_t * torch.sqrt(-1 * dt))
                 - torch.log(torch.sqrt(2 * torch.as_tensor(math.pi)))
             )
 
         elif sde_type == "cps":
-            std_dev_t = sigma_next * math.sin(noise_level * math.pi / 2)  # sigma_t in paper
-            pred_original_sample = sample - sigma * model_output  # predicted x_0 in paper
-            noise_estimate = sample + model_output * (1 - sigma)  # predicted x_1 in paper
-            prev_sample_mean = pred_original_sample * (1 - sigma_next) + noise_estimate * torch.sqrt(
-                sigma_next**2 - std_dev_t**2
-            )
+            std_dev_t = sigma_next * math.sin(
+                noise_level * math.pi / 2
+            )  # sigma_t in paper
+            pred_original_sample = (
+                sample - sigma * model_output
+            )  # predicted x_0 in paper
+            noise_estimate = sample + model_output * (
+                1 - sigma
+            )  # predicted x_1 in paper
+            prev_sample_mean = pred_original_sample * (
+                1 - sigma_next
+            ) + noise_estimate * torch.sqrt(sigma_next**2 - std_dev_t**2)
 
             if prev_sample is None:
                 variance_noise = randn_tensor(
@@ -164,15 +221,4 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
 
         # mean along all but batch dimension
         log_prob = log_prob.mean(dim=tuple(range(1, log_prob.ndim)))
-
-        # upon completion increase step index by one
-        self._step_index += 1
-        if per_token_timesteps is None:
-            # Cast sample back to model compatible dtype
-            prev_sample = prev_sample.to(model_output.dtype)
-
-        if not return_dict:
-            return (prev_sample, log_prob, prev_sample_mean, std_dev_t)
-        return FlowMatchSDEDiscreteSchedulerOutput(
-            prev_sample=prev_sample, log_prob=log_prob, prev_sample_mean=prev_sample_mean, std_dev_t=std_dev_t
-        )
+        return prev_sample, log_prob, prev_sample_mean, std_dev_t

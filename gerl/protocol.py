@@ -17,13 +17,15 @@ Implement base data transfer protocol between any two functions, modules.
 We can subclass Protocol to define more detailed batch info with specific keys
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from tensordict import TensorDict
 
 from verl import DataProto as verlDataProto
 from verl.protocol import union_tensor_dict, union_numpy_dict
 from verl.utils.py_functional import union_two_dict
 
 __all__ = ["DataProto"]
+
 
 @dataclass
 class DataProto(verlDataProto):
@@ -33,6 +35,10 @@ class DataProto(verlDataProto):
     TensorDict allows you to manipulate a dictionary of Tensors like a single Tensor. Ideally, the tensors with the
     same batch size should be put inside batch.
     """
+
+    batch: TensorDict = None
+    non_tensor_batch: dict = field(default_factory=dict)
+    meta_info: dict = field(default_factory=dict)
 
     def union(self, other: "DataProto") -> "DataProto":
         """Union with another DataProto. Union batch and meta_info separately.
@@ -52,6 +58,8 @@ class DataProto(verlDataProto):
             self.batch = union_tensor_dict(self.batch, other.batch)
         elif (self.batch or other.batch) is not None:
             self.batch = self.batch or other.batch
-        self.non_tensor_batch = union_numpy_dict(self.non_tensor_batch, other.non_tensor_batch)
+        self.non_tensor_batch = union_numpy_dict(
+            self.non_tensor_batch, other.non_tensor_batch
+        )
         self.meta_info = union_two_dict(self.meta_info, other.meta_info)
         return self

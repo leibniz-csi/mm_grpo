@@ -32,7 +32,9 @@ def get_rollout_class(rollout_name: str, mode: str) -> type[BaseRollout]:
     Returns:
         The rollout class.
     """
-    assert (rollout_name, mode) in _ROLLOUT_REGISTRY, f"Rollout {rollout_name} with mode {mode} not found"
+    assert (rollout_name, mode) in _ROLLOUT_REGISTRY, (
+        f"Rollout {rollout_name} with mode {mode} not found"
+    )
     fqdn = _ROLLOUT_REGISTRY[(rollout_name, mode)]
     module_name, class_name = fqdn.rsplit(".", 1)
     rollout_module = importlib.import_module(module_name)
