@@ -13,13 +13,14 @@
 # limitations under the License.
 # ============================================================================
 
-from . import actor, diffusers_model
+from . import actor, diffusers_model, rollout
 from .actor import *  # noqa: F403
 from .diffusers_model import *  # noqa: F403
-# from .reward_model import *  # noqa: F401
+from .rollout import *  # noqa: F403
 
 __all__ = (
     actor.__all__
     # + reward_model.__all__
     + diffusers_model.__all__
+    + rollout.__all__
 )

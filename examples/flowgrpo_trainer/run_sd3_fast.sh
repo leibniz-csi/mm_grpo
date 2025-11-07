@@ -6,8 +6,8 @@ python3 -m gerl.trainer.main_flowgrpo \
     data.val_files=$HOME/dataset/ocr/test.txt \
     data.train_batch_size=2 \
     data.val_max_samples=8 \
-    data.max_prompt_length=512 \
-    data.filter_overlong_prompts=True \
+    data.max_prompt_length=128 \
+    data.filter_overlong_prompts=False \
     actor_rollout_ref.model.path=stabilityai/stable-diffusion-3.5-medium \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.ppo_mini_batch_size=1 \
@@ -22,11 +22,12 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.policy_loss.loss_mode=vanilla_diffusion \
-    actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
+    actor_rollout_ref.rollout.data_parallel_size=1 \
+    actor_rollout_ref.rollout.context_parallel_size=1 \
     actor_rollout_ref.rollout.name=diffusers \
-    actor_rollout_ref.rollout.gpu_memory_utilization=1.0 \
-    actor_rollout_ref.rollout.n=4 \
+    actor_rollout_ref.rollout.n=8 \
+    actor_rollout_ref.rollout.rollout_batch_size=8 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \

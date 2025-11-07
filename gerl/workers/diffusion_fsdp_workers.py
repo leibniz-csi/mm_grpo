@@ -16,15 +16,20 @@
 The main entry point to run the FlowGRPO algorithm
 """
 
+import datetime
+import json
 import logging
 import os
 import warnings
+from dataclasses import asdict
+from typing import Optional
 
 import psutil
 import torch
 import torch.distributed
 from omegaconf import DictConfig, OmegaConf, open_dict
 from peft import LoraConfig, get_peft_model
+from safetensors.torch import save_file
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.fsdp.api import (
@@ -32,8 +37,7 @@ from torch.distributed.fsdp.api import (
     ShardedStateDictConfig,
     StateDictType,
 )
-
-from gerl import DataProto
+from verl.single_controller.base import Worker
 from verl.single_controller.base.decorator import (
     Dispatch,
     make_nd_compute_dataproto_dispatch_fn,
@@ -45,6 +49,7 @@ from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.device import (
     get_device_id,
     get_device_name,
+    get_nccl_backend,
     get_torch_device,
 )
 from verl.utils.fs import copy_to_local
@@ -58,21 +63,33 @@ from verl.utils.fsdp_utils import (
     get_init_weight_context_manager,
     get_shard_placement_fn,
     init_fn,
+    layered_summon_lora_params,
     load_fsdp_model_to_gpu,
     load_fsdp_optimizer,
     offload_fsdp_model_to_cpu,
     offload_fsdp_optimizer,
 )
 from verl.utils.import_utils import import_external_libs
-from verl.utils.profiler import DistProfiler, log_gpu_memory_usage, simple_timer
-from verl.utils.profiler.performance import reduce_timing, topk_reduce_ratio_min_max
+from verl.utils.profiler import (
+    DistProfiler,
+    DistProfilerExtension,
+    ProfilerConfig,
+    log_gpu_memory_usage,
+    simple_timer,
+)
+from verl.utils.profiler.performance import (
+    reduce_timing,
+    topk_reduce_ratio_min_max,
+)
 from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.ray_utils import get_event_loop
-from verl.workers.config import FSDPEngineConfig, RolloutConfig
+from verl.workers.config import FSDPEngineConfig
 from verl.workers.config.optimizer import build_optimizer
-from verl.workers.fsdp_workers import ActorRolloutRefWorker, get_sharding_strategy
-from gerl.workers.config import DiffusersModelConfig
-from gerl.workers.rollout import get_rollout_class
+from verl.workers.fsdp_workers import create_device_mesh, get_sharding_strategy
+
+from ..protocol import DataProto
+from .config import DiffusersModelConfig, DiffusionRolloutConfig
+from .rollout import get_rollout_class
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
@@ -80,7 +97,154 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 device_name = get_device_name()
 
 
-class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
+class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
+    def __init__(self, config: DictConfig, role: str, **kwargs):
+        Worker.__init__(self)
+
+        self.config = config
+        if not torch.distributed.is_initialized():
+            rank = int(os.environ.get("RANK", 0))
+            world_size = int(os.environ.get("WORLD_SIZE", 1))
+            torch.distributed.init_process_group(
+                backend=f"cpu:gloo,{get_device_name()}:{get_nccl_backend()}",
+                rank=rank,
+                world_size=world_size,
+                timeout=datetime.timedelta(
+                    seconds=self.config.get("nccl_timeout", 600)
+                ),
+                init_method=os.environ.get("DIST_INIT_METHOD", None),
+            )
+
+        # build device mesh for FSDP
+        world_size = torch.distributed.get_world_size()
+        # TODO(sgm): support FSDP hybrid shard for larger model
+        self.device_mesh = create_device_mesh(
+            world_size=world_size, fsdp_size=self.config.actor.fsdp_config.fsdp_size
+        )
+
+        # create training dispatch
+        self._register_dispatch_collect_info(
+            "actor", dp_rank=self.rank, is_collect=True
+        )
+
+        self._lora_rank = self.config.model.get("lora_rank", 0)
+        self._is_lora = (
+            self.config.model.get("lora_adapter_path") is not None
+            or self._lora_rank > 0
+        )
+
+        self.role = role
+        assert self.role in [
+            "actor",
+            "rollout",
+            "ref",
+            "actor_rollout",
+            "actor_rollout_ref",
+        ]
+
+        self._is_actor = self.role in ["actor", "actor_rollout", "actor_rollout_ref"]
+        self._is_rollout = self.role in [
+            "rollout",
+            "actor_rollout",
+            "actor_rollout_ref",
+        ]
+        self._is_ref = self.role in ["ref", "actor_rollout_ref"]
+        self.use_orig_params = self.config.actor.fsdp_config.get(
+            "use_orig_params", False
+        )
+
+        # TODO(haibin.lin):
+        # As of now the type of config is DictConfig, if we assign config.profiler with ProfilerConfig,
+        # it will actually convert the ProfilerConfig dataclass back to a DictConfig.
+        # We can still use ProfilerConfig for testing purpose (tests/utils/test_nvtx_profile.py)
+        # as they provides DictConfig-like interface
+        # The benefit of creating the dataclass config is to perform validation during __post_init__
+        if self._is_actor:
+            omega_profiler_config = config.actor.get("profiler", {})
+        elif self._is_rollout:
+            # NOTE: In colocation mode, rollout config may not take effect (follow the actor config)
+            # This is for extendability in AsyncRL cases
+            omega_profiler_config = config.rollout.get("profiler", {})
+        elif self._is_ref:
+            omega_profiler_config = config.ref.get("profiler", {})
+        else:
+            raise ValueError(
+                f"Invalid role {self.role}, should be one of "
+                "['actor', 'rollout', 'ref', 'actor_rollout', 'actor_rollout_ref']"
+            )
+        # omega_profiler_config is DictConfig
+        # profiler_config is a ProfilerConfig dataclass
+        profiler_config = omega_conf_to_dataclass(
+            omega_profiler_config, dataclass_type=ProfilerConfig
+        )
+        if omega_profiler_config.get("tool", None) in [
+            "npu",
+            "nsys",
+            "torch",
+            "torch_memory",
+        ]:
+            tool_config = omega_conf_to_dataclass(
+                omega_profiler_config.get("tool_config", {}).get(
+                    omega_profiler_config.get("tool")
+                )
+            )
+        else:
+            tool_config = None
+        DistProfilerExtension.__init__(
+            self,
+            DistProfiler(
+                rank=self.rank, config=profiler_config, tool_config=tool_config
+            ),
+        )
+
+        self._is_offload_param = False
+        self._is_offload_optimizer = False
+        if self._is_actor:
+            self._is_offload_param = self.config.actor.fsdp_config.get(
+                "param_offload", False
+            )
+            self._is_offload_optimizer = self.config.actor.fsdp_config.get(
+                "optimizer_offload", False
+            )
+        elif self._is_ref:
+            # TODO: it seems that manual offload is slowly than FSDP offload
+            self._is_offload_param = self.config.ref.fsdp_config.get(
+                "param_offload", False
+            )
+
+        # normalize config
+        if self._is_actor:
+            self.config.actor.ppo_mini_batch_size *= self.config.rollout.n
+            self.config.actor.ppo_mini_batch_size //= self.device_mesh.size()
+            assert self.config.actor.ppo_mini_batch_size > 0, (
+                f"ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be larger than 0 after "
+                f"normalization"
+            )
+            # micro bsz
+            if self.config.actor.ppo_micro_batch_size is not None:
+                self.config.actor.ppo_micro_batch_size //= self.device_mesh.size()
+                self.config.actor.ppo_micro_batch_size_per_gpu = (
+                    self.config.actor.ppo_micro_batch_size
+                )
+
+            if self.config.actor.ppo_micro_batch_size_per_gpu is not None:
+                assert (
+                    self.config.actor.ppo_mini_batch_size
+                    % self.config.actor.ppo_micro_batch_size_per_gpu
+                    == 0
+                ), (
+                    f"normalized ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be divisible by "
+                    f"ppo_micro_batch_size_per_gpu {self.config.actor.ppo_micro_batch_size_per_gpu}"
+                )
+                assert (
+                    self.config.actor.ppo_mini_batch_size
+                    // self.config.actor.ppo_micro_batch_size_per_gpu
+                    > 0
+                ), (
+                    f"normalized ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be larger than "
+                    f"ppo_micro_batch_size_per_gpu {self.config.actor.ppo_micro_batch_size_per_gpu}"
+                )
+
     def _build_model_optimizer(
         self,
         model_path,
@@ -95,7 +259,6 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
     ):
         from diffusers import DiffusionPipeline, ModelMixin
         from torch.distributed.fsdp import CPUOffload, MixedPrecision
-
         from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
 
@@ -189,6 +352,7 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
                     actor_module = get_peft_model(
                         actor_module, LoraConfig(**lora_config)
                     )
+                pipeline.transformer = actor_module
 
         self.use_orig_params = fsdp_config.get("use_orig_params", False)
 
@@ -290,6 +454,7 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
             enable_activation_offloading(
                 actor_module_fsdp, fsdp_strategy, enable_gradient_checkpointing
             )
+        pipeline.transformer = actor_module_fsdp
 
         log_gpu_memory_usage(f"After {role} FSDP init", logger=logger)
 
@@ -350,7 +515,9 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
 
     def _build_rollout(self, actor_rollout_module):
         # 1. parse rollout and huggingface model config
-        rollout_config: RolloutConfig = omega_conf_to_dataclass(self.config.rollout)
+        rollout_config: DiffusionRolloutConfig = omega_conf_to_dataclass(
+            self.config.rollout
+        )
         model_config: DiffusersModelConfig = omega_conf_to_dataclass(
             self.config.model, dataclass_type=DiffusersModelConfig
         )
@@ -361,33 +528,23 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
             self.config.rollout.tensor_model_parallel_size
             * self.config.rollout.data_parallel_size
         )
-        infer_pp = self.config.rollout.pipeline_model_parallel_size
-        infer_world_size = infer_tp * infer_pp
+        infer_world_size = infer_tp
         dp = self.world_size // infer_world_size
         assert self.world_size % infer_world_size == 0, (
             f"rollout world_size: {self.world_size} is not divisible by infer_world_size: {infer_world_size}"
         )
         rollout_device_mesh = init_device_mesh(
             device_name,
-            mesh_shape=(dp, infer_tp, infer_pp),
-            mesh_dim_names=["dp", "infer_tp", "infer_pp"],
+            mesh_shape=(dp, infer_tp),
+            mesh_dim_names=["dp", "infer_tp"],
         )
-        rollout_name = self.config.rollout.name
 
-        if rollout_name == "hf":
-            self._register_dispatch_collect_info(
-                "rollout", dp_rank=self.rank, is_collect=True
-            )
-        else:
-            is_collect = (
-                rollout_device_mesh["infer_tp"].get_local_rank() == 0
-                and rollout_device_mesh["infer_pp"].get_local_rank() == 0
-            )
-            self._register_dispatch_collect_info(
-                "rollout",
-                dp_rank=rollout_device_mesh["dp"].get_local_rank(),
-                is_collect=is_collect,
-            )
+        is_collect = rollout_device_mesh["infer_tp"].get_local_rank() == 0
+        self._register_dispatch_collect_info(
+            "rollout",
+            dp_rank=rollout_device_mesh["dp"].get_local_rank(),
+            is_collect=is_collect,
+        )
 
         # 3. init trainer and rollout random states
         self.torch_random_states = get_torch_device().get_rng_state()
@@ -430,7 +587,6 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
             )
 
         # used for LoRA
-        self.base_sync_done: bool = "dummy" not in self.config.rollout.load_format
         self.layered_summon = self.config.rollout.get("layered_summon", False)
 
         # 5. switch to trainer mode
@@ -440,6 +596,21 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         if rollout_config.mode == "sync" and self._is_actor:
             loop = get_event_loop()
             loop.run_until_complete(self.trainer_mode())
+
+    async def rollout_mode(self):
+        """Context switch hybridengine to rollout mode."""
+        self.actor_module_fsdp.eval()
+
+        self.torch_random_states = get_torch_device().get_rng_state()
+        get_torch_device().set_rng_state(self.gen_random_states)
+
+    async def trainer_mode(self):
+        """Context switch hybridengine to trainer mode."""
+        self.actor_module_fsdp.train()
+
+        # restore random states
+        self.gen_random_states = get_torch_device().get_rng_state()
+        get_torch_device().set_rng_state(self.torch_random_states)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):
@@ -652,10 +823,6 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
         adapter_ctx = (
             self.actor.actor_module.disable_adapter() if is_lora else nullcontext()
         )
-        # we should always recompute old_log_probs when it is HybridEngine
-        data.meta_info["micro_batch_size"] = (
-            self.config.rollout.log_prob_micro_batch_size_per_gpu
-        )
         # perform recompute log_prob
         with adapter_ctx:
             output = self.actor.compute_log_prob(data=data)
@@ -675,6 +842,135 @@ class DiffusionActorRolloutRefWorker(ActorRolloutRefWorker):
             )
 
         return output
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def save_checkpoint(
+        self, local_path, hdfs_path=None, global_step=0, max_ckpt_to_keep=None
+    ):
+        from verl.utils.logger import log_with_rank
+
+        # only support save and load ckpt for actor
+        assert self._is_actor
+
+        if self._is_offload_param:
+            load_fsdp_model_to_gpu(self.actor_module_fsdp)
+
+        self.checkpoint_manager.save_checkpoint(
+            local_path=local_path,
+            hdfs_path=hdfs_path,
+            global_step=global_step,
+            max_ckpt_to_keep=max_ckpt_to_keep,
+        )
+        torch.distributed.barrier()
+
+        if self._is_lora and hasattr(
+            getattr(self, "actor_module", self.actor_module_fsdp), "peft_config"
+        ):
+            lora_save_path = os.path.join(local_path, "lora_adapter")
+            peft_model = getattr(self, "actor_module", self.actor_module_fsdp)
+            peft_config = {}
+            if torch.distributed.get_rank() == 0:
+                os.makedirs(lora_save_path, exist_ok=True)
+                peft_config = asdict(peft_model.peft_config.get("default", {}))
+                peft_config["task_type"] = peft_config["task_type"].value
+                peft_config["peft_type"] = peft_config["peft_type"].value
+                peft_config["target_modules"] = list(peft_config["target_modules"])
+            try:
+                if fsdp_version(self.actor_module_fsdp) > 0:
+                    self.actor_module_fsdp = self.actor_module_fsdp.to(
+                        get_device_name()
+                    )
+                    lora_params = layered_summon_lora_params(self.actor_module_fsdp)
+                    if torch.distributed.get_rank() == 0:
+                        save_file(
+                            lora_params,
+                            os.path.join(lora_save_path, "adapter_model.safetensors"),
+                        )
+                        with open(
+                            os.path.join(lora_save_path, "adapter_config.json"),
+                            "w",
+                            encoding="utf-8",
+                        ) as f:
+                            json.dump(peft_config, f, ensure_ascii=False, indent=4)
+            except Exception as e:
+                log_with_rank(
+                    f"Save LoRA Adapter Error ({e})",
+                    rank=torch.distributed.get_rank(),
+                    logger=logger,
+                    log_only_rank_0=True,
+                )
+
+            torch.distributed.barrier()
+            log_with_rank(
+                f"[rank-{self.rank}]: Saved LoRA adapter to: {lora_save_path}",
+                rank=torch.distributed.get_rank(),
+                logger=logger,
+                log_only_rank_0=True,
+            )
+
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def load_checkpoint(self, local_path, hdfs_path=None, del_local_after_load=False):
+        assert self._is_actor or (not self._is_actor and self._is_rollout), (
+            f"Checkpoint loading is only supported for Actor or standalone Rollout Workers, but got "
+            f"{self._is_actor} and {self._is_rollout}"
+        )
+
+        # No checkpoint to load, just offload the model and optimizer to CPU
+        if local_path is None:
+            if self._is_offload_param:
+                offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+            if self._is_offload_optimizer:
+                offload_fsdp_optimizer(self.actor_optimizer)
+            return
+
+        if self._is_offload_param:
+            load_fsdp_model_to_gpu(self.actor_module_fsdp)
+
+        self.checkpoint_manager.load_checkpoint(
+            local_path=local_path,
+            hdfs_path=hdfs_path,
+            del_local_after_load=del_local_after_load,
+        )
+
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+
+        if self._is_offload_optimizer:
+            offload_fsdp_optimizer(self.actor_optimizer)
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def start_profile(self, **kwargs) -> None:
+        """Start profiling for the current rank in the current training step."""
+        self.profiler.start(**kwargs)
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def stop_profile(self) -> None:
+        """Stop profiling for the current rank in the current training step."""
+        self.profiler.stop()
+
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL)
+    def dump_memory_snapshot(
+        self, tag: str = "manual", sub_dir: Optional[str] = None
+    ) -> None:
+        """Manually trigger a CUDA memory snapshot dump on all ranks."""
+        # Memory snapshot is now handled by the profiler system
+        # This method is kept for backward compatibility but delegates to profiler
+        if hasattr(self, "profiler") and hasattr(self.profiler, "_impl"):
+            try:
+                # Try to use the profiler's memory snapshot functionality
+                if hasattr(self.profiler._impl, "sampler"):
+                    out_dir = (
+                        OmegaConf.select(self.config, "actor.profiler.save_path") or "."
+                    )
+                    self.profiler._impl.sampler.dump_memory_snapshot(
+                        out_dir=out_dir, tag=tag, sub_dir=sub_dir
+                    )
+            except Exception:
+                # silently ignore if profiler doesn't support memory snapshots
+                pass
 
 
 class AsyncDiffusionActorRolloutRefWorker(DiffusionActorRolloutRefWorker):
