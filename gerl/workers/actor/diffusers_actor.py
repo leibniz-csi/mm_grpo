@@ -27,15 +27,15 @@ from diffusers import DiffusionPipeline
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.tensor import DTensor
-
-from gerl import DataProto
-from gerl.trainer.ppo.core_algos import get_policy_loss_fn
 from verl.utils.device import get_device_id, get_device_name
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
 from verl.utils.profiler import GPUMemoryLogger
 from verl.utils.py_functional import append_to_dict
 from verl.workers.actor import BasePPOActor
 from verl.workers.config import ActorConfig
+
+from gerl import DataProto
+from gerl.trainer.ppo.core_algos import get_policy_loss_fn
 
 __all__ = ["DiffusersPPOActor"]
 

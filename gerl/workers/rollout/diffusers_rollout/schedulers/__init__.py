@@ -13,4 +13,5 @@
 # limitations under the License.
 # ============================================================================
 
-from .scheduling_flow_match_sde_discrete import FlowMatchSDEDiscreteScheduler  # noqa: F401
+from .scheduling_flow_match_sde_discrete import \
+    FlowMatchSDEDiscreteScheduler  # noqa: F401

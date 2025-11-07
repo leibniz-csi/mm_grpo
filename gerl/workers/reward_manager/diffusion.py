@@ -17,11 +17,11 @@ from collections import defaultdict
 from typing import Any
 
 import torch
+from verl.workers.reward_manager.abstract import AbstractRewardManager
 
 from gerl import DataProto
 from gerl.utils.reward_score import default_compute_score
 from gerl.workers.reward_manager import register
-from verl.workers.reward_manager.abstract import AbstractRewardManager
 
 
 @register("diffusion")

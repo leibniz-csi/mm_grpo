@@ -28,12 +28,13 @@ from typing import Any, Optional
 import ray
 import torch
 from omegaconf import DictConfig
-
 from verl import DataProto
+from verl.utils.transferqueue_utils import tqbridge
+from verl.workers.reward_manager.abstract import (AbstractRewardManager,
+                                                  RawRewardFn)
+
 from gerl.utils.reward_score import default_compute_score
 from gerl.workers.reward_manager import get_reward_manager_cls
-from verl.utils.transferqueue_utils import tqbridge
-from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
 
 def _call_with_kwargs(raw_fn, extra_kwargs, *args, **kwargs):
@@ -98,9 +99,13 @@ def get_custom_reward_fn(config: DictConfig) -> Optional[RawRewardFn]:
             raise RuntimeError(f"Error loading module from '{file_path}': {e}") from e
 
     if not hasattr(module, function_name):
-        raise AttributeError(f"Reward function '{function_name}' not found in '{module.__file__}'.")
+        raise AttributeError(
+            f"Reward function '{function_name}' not found in '{module.__file__}'."
+        )
 
-    print(f"using customized reward function '{function_name}' from '{module.__file__}'")
+    print(
+        f"using customized reward function '{function_name}' from '{module.__file__}'"
+    )
     raw_fn = getattr(module, function_name)
 
     reward_kwargs = dict(reward_fn_config.get("reward_kwargs", {}))
@@ -147,7 +152,9 @@ def load_reward_manager(
         if sandbox_url:
             sandbox_manager = multiprocessing.Manager()
             # Create a semaphore to control concurrent access to the sandbox
-            _concurrent_semaphore = sandbox_manager.Semaphore(sandbox_config.get("max_concurrent", 64))
+            _concurrent_semaphore = sandbox_manager.Semaphore(
+                sandbox_config.get("max_concurrent", 64)
+            )
             final_compute_score = partial(
                 default_compute_score,
                 sandbox_fusion_url=sandbox_url,
@@ -168,7 +175,9 @@ def load_reward_manager(
 
 
 @tqbridge(put_data=False)
-def compute_reward(data: DataProto, reward_fn: AbstractRewardManager) -> tuple[torch.Tensor, dict[str, Any]]:
+def compute_reward(
+    data: DataProto, reward_fn: AbstractRewardManager
+) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Compute reward for a batch of data.
     Args:
@@ -200,9 +209,15 @@ def compute_reward_async(data: DataProto, config=None, tokenizer=None, reward_fn
             "config and tokenizer must not be None when reward_fn is None"
         )
 
-        warnings.warn("using config and tokenizer with compute_reward_async is deprecated", stacklevel=2)
+        warnings.warn(
+            "using config and tokenizer with compute_reward_async is deprecated",
+            stacklevel=2,
+        )
         reward_fn = load_reward_manager(
-            config, tokenizer, num_examine=0, **config.reward_model.get("reward_kwargs", {})
+            config,
+            tokenizer,
+            num_examine=0,
+            **config.reward_model.get("reward_kwargs", {}),
         )
 
     return compute_reward(data, reward_fn)
