@@ -25,13 +25,12 @@ from diffusers import DiffusionPipeline
 from PIL import Image
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
-
-from gerl import DataProto
 from verl.utils.device import get_device_name
 from verl.utils.profiler import GPUMemoryLogger
-from gerl.workers.config import DiffusersModelConfig
-from verl.workers.config import RolloutConfig
 from verl.workers.rollout.base import BaseRollout
+
+from ....protocol import DataProto
+from ...config import DiffusersModelConfig, DiffusionRolloutConfig
 
 __all__ = ["DiffusersRollout"]
 
@@ -44,7 +43,7 @@ class DiffusersRollout(BaseRollout):
     def __init__(
         self,
         rollout_module: DiffusionPipeline,
-        config: RolloutConfig,
+        config: DiffusionRolloutConfig,
         model_config: DiffusersModelConfig,
         device_mesh: DeviceMesh,
     ):
@@ -57,41 +56,51 @@ class DiffusersRollout(BaseRollout):
     @GPUMemoryLogger(role="diffusers rollout spmd", logger=logger)
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
-        # TODO (Mike): hard coded, for test only, make is configurable later
-        HEIGHT, WIDTH = 512, 512
-        input_texts = prompts.non_tensor_batch["prompt"].tolist()
+        self.rollout_module.transformer.eval()
+        micro_batches = prompts.split(self.config.rollout_batch_size)
+        generated_results = []
 
-        with torch.autocast(device_type=get_device_name(), dtype=torch.bfloat16):
-            output = self.rollout_module(
-                input_texts,
-                height=HEIGHT,
-                width=WIDTH,
-                max_sequence_length=self.config.prompt_length,
-                output_type="pt",
+        for micro_batch in micro_batches:
+            input_texts = micro_batch.non_tensor_batch["prompt"].tolist()
+
+            with torch.autocast(device_type=get_device_name(), dtype=torch.bfloat16):
+                output = self.rollout_module(
+                    input_texts,
+                    height=self.config.image_height,
+                    width=self.config.image_width,
+                    max_sequence_length=self.config.prompt_length,
+                    output_type="pt",
+                )
+
+            # TODO (Mike): hard coded, for test only, drop later
+            images_pil = output.images.cpu().float().permute(0, 2, 3, 1).numpy()
+            images_pil = (images_pil * 255).round().astype("uint8")
+            os.makedirs("visual", exist_ok=True)
+            for image in images_pil:
+                assert image.shape == (
+                    self.config.image_height,
+                    self.config.image_width,
+                    3,
+                )
+                uuid = os.urandom(8).hex()
+                Image.fromarray(image).save(f"visual/{uuid}.jpg")
+
+            result = TensorDict(
+                {
+                    "responses": output.images,
+                    "latents": output.all_latents,
+                    "log_probs": output.all_log_probs,
+                    "timesteps": output.all_timesteps,
+                    "prompt_embeds": output.prompt_embeds,
+                    "pooled_prompt_embeds": output.pooled_prompt_embeds,
+                    "negative_prompt_embeds": output.negative_prompt_embeds,
+                    "negative_pooled_prompt_embeds": output.negative_pooled_prompt_embeds,
+                },
+                batch_size=len(output.images),
             )
 
-        # TODO (Mike): hard coded, for test only, drop later
-        images_pil = output.images.cpu().float().permute(0, 2, 3, 1).numpy()
-        images_pil = (images_pil * 255).round().astype("uint8")
-        os.makedirs("visual", exist_ok=True)
-        for image in images_pil:
-            assert image.shape == (HEIGHT, WIDTH, 3)
-            uuid = os.urandom(8).hex()
-            Image.fromarray(image).save(f"visual/{uuid}.jpg")
-
-        batch = TensorDict(
-            {
-                "responses": output.images,
-                "latents": output.all_latents,
-                "log_probs": output.all_log_probs,
-                "timesteps": output.all_timesteps,
-                "prompt_embeds": output.prompt_embeds,
-                "pooled_prompt_embeds": output.pooled_prompt_embeds,
-                "negative_prompt_embeds": output.negative_prompt_embeds,
-                "negative_pooled_prompt_embeds": output.negative_pooled_prompt_embeds,
-            },
-            batch_size=len(output.images),
-        )
+            generated_results.append(result)
+            batch = torch.cat(generated_results)
 
         return DataProto(batch=batch)
 

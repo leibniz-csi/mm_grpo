@@ -12,6 +12,12 @@ repos:
     hooks:
       - id: mypy
 
+  - repo: https://github.com/pycqa/isort
+    rev: 7.0.0
+    hooks:
+      - id: isort
+        args: ["--split-on-trailing-comma"]
+
   # - repo: local
   #   hooks:
   #     - id: autogen-trainer-cfg
