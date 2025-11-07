@@ -44,15 +44,21 @@ def default_compute_score(
     if data_source in [
         "ocr",
     ]:
-        # TODO (Mike): temp use, change to API call of OCR later
+        from . import ocr
+
+        score_name = "paddle_ocr"
+        if extra_info and "ocr_scorer" in extra_info:
+            score_name = extra_info["ocr_scorer"]
+        res = ocr.compute_score(solution_str, ground_truth, score_name)
+
+    else:
+        # TODO: determine if use a default scorer?
         from . import jpeg_imcompressibility
 
         res = jpeg_imcompressibility.compute_score(solution_str, ground_truth)
-
-    else:
-        raise NotImplementedError(
-            f"Reward function is not implemented for {data_source=}"
-        )
+        # raise NotImplementedError(
+        #     f"Reward function is not implemented for {data_source=}"
+        # )
 
     if isinstance(res, dict):
         return res
