@@ -21,6 +21,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.model.enable_gradient_checkpointing=False \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
+    actor_rollout_ref.actor.fsdp_config.model_dtype=fp16 \
     actor_rollout_ref.actor.policy_loss.loss_mode=vanilla_diffusion \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.data_parallel_size=1 \
@@ -28,11 +29,13 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.name=diffusers \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.rollout_batch_size=8 \
+    actor_rollout_ref.rollout.dtype=fp16 \
     actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu=1 \
     actor_rollout_ref.ref.fsdp_config.param_offload=True \
     algorithm.use_kl_in_reward=False \
     reward_model.reward_manager=diffusion \
     trainer.critic_warmup=0 \
+    trainer.validation_data_dir="./validation" \
     trainer.logger='["console"]' \
     trainer.project_name='verl_grpo_example_gsm8k' \
     trainer.experiment_name='sd_35_medium_function_rm' \

@@ -20,10 +20,18 @@ image_width: 512
 # batch size for rollout (for diffusers)
 rollout_batch_size: 8
 
-# for diffusers rollout
-# Rollout model parameters type. Align with actor model's FSDP/Megatron type.
-dtype: bfloat16
+# inference steps
+num_inference_steps: 10
 
+# noise in SDE
+noise_level: 0.7
+
+# guidance scale for classifier-free guidance
+guidance_scale: 4.5
+
+# for diffusers rollout
+# Rollout dtype. Shoudd Align with actor model's FSDP/Megatron type.
+dtype: fp16
 
 # TP size for rollout
 tensor_model_parallel_size: 1
@@ -42,3 +50,9 @@ val_kwargs:
 
   # whether to repeat n times for validation
   n: 1
+
+  # noise level during validation
+  noise_level: 0.0
+
+  # inference steps during validation
+  num_inference_steps: 40

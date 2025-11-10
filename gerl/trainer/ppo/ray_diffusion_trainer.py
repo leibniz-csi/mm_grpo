@@ -13,6 +13,8 @@
 # limitations under the License.
 # ============================================================================
 
+import json
+import os
 import uuid
 from collections import defaultdict
 from pprint import pprint
@@ -20,7 +22,9 @@ from typing import Optional
 
 import numpy as np
 import ray
+import torch
 from omegaconf import OmegaConf
+from PIL import Image
 from tqdm import tqdm
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.single_controller.ray.base import create_colocated_worker_cls
@@ -91,6 +95,48 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
         # TODO (Mike): to be implemented
         return batch
 
+    def _dump_generations(
+        self, inputs, outputs, gts, scores, reward_extra_infos_dict, dump_path
+    ):
+        """Dump rollout/validation samples as JSONL."""
+        os.makedirs(dump_path, exist_ok=True)
+
+        visual_folder = os.path.join(dump_path, f"{self.global_steps}")
+        os.makedirs(visual_folder, exist_ok=True)
+
+        output_paths = []
+        images_pil = outputs.cpu().float().permute(0, 2, 3, 1).numpy()
+        images_pil = (images_pil * 255).round().astype("uint8")
+        for i, image in enumerate(images_pil):
+            image_path = os.path.join(visual_folder, f"{i}.jpg")
+            Image.fromarray(image).save(image_path)
+            output_paths.append(image_path)
+
+        filename = os.path.join(dump_path, f"{self.global_steps}.jsonl")
+
+        n = len(inputs)
+        base_data = {
+            "input": inputs,
+            "output": output_paths,
+            "gts": gts,
+            "score": scores,
+            "step": [self.global_steps] * n,
+        }
+
+        for k, v in reward_extra_infos_dict.items():
+            if len(v) == n:
+                base_data[k] = v
+
+        lines = []
+        for i in range(n):
+            entry = {k: v[i] for k, v in base_data.items()}
+            lines.append(json.dumps(entry, ensure_ascii=False))
+
+        with open(filename, "w") as f:
+            f.write("\n".join(lines) + "\n")
+
+        print(f"Dumped generations to {filename}")
+
     def _validate(self):
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
@@ -100,7 +146,6 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
         sample_outputs = []
         sample_gts = []
         sample_scores = []
-        sample_turns = []
         sample_uids = []
 
         for test_data in self.val_dataloader:
@@ -134,6 +179,8 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
             test_gen_batch = self._get_gen_batch(test_batch)
 
             test_gen_batch.meta_info = {
+                "noise_level": self.config.actor_rollout_ref.rollout.val_kwargs.noise_level,
+                "num_inference_steps": self.config.actor_rollout_ref.rollout.val_kwargs.num_inference_steps,
                 "validate": True,
                 "global_steps": self.global_steps,
             }
@@ -152,7 +199,7 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
 
             # Store generated outputs
             output_images = test_output_gen_batch.batch["responses"]
-            sample_outputs.extend(output_images)
+            sample_outputs.append(output_images)
 
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info["validate"] = True
@@ -171,16 +218,13 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                 for key, lst in result["reward_extra_info"].items():
                     reward_extra_infos_dict[key].extend(lst)
 
-            # collect num_turns of each prompt
-            if "__num_turns__" in test_batch.non_tensor_batch:
-                sample_turns.append(test_batch.non_tensor_batch["__num_turns__"])
-
             data_source_lst.append(
                 test_batch.non_tensor_batch.get(
                     "data_source", ["unknown"] * reward_tensor.shape[0]
                 )
             )
 
+        sample_outputs = torch.cat(sample_outputs, dim=0)
         self._maybe_log_val_generations(
             inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores
         )
@@ -231,12 +275,6 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                         metric_sec = "val-aux"
                     pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
                     metric_dict[pfx] = metric_val
-
-        if len(sample_turns) > 0:
-            sample_turns = np.concatenate(sample_turns)
-            metric_dict["val-aux/num_turns/min"] = sample_turns.min()
-            metric_dict["val-aux/num_turns/max"] = sample_turns.max()
-            metric_dict["val-aux/num_turns/mean"] = sample_turns.mean()
 
         return metric_dict
 
@@ -542,17 +580,6 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                             batch.batch["instance_level_rewards"] = batch.batch[
                                 "instance_level_scores"
                             ]
-
-                        # Compute rollout importance sampling weights centrally (once per batch)
-                        # This corrects for mismatch between rollout policy and training policy
-                        # Also computes mismatch metrics (KL, PPL, etc.)
-                        batch, is_metrics = (
-                            self.compute_rollout_importance_weights_and_add_to_batch(
-                                batch
-                            )
-                        )
-                        # IS and mismatch metrics already have mismatch/ prefix
-                        metrics.update(is_metrics)
 
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get(
