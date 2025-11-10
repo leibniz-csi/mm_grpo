@@ -17,11 +17,11 @@ from collections import defaultdict
 from typing import Any
 
 import torch
-
-from gerl import DataProto
-from gerl.utils.reward_score import default_compute_score
-from gerl.workers.reward_manager import register
 from verl.workers.reward_manager.abstract import AbstractRewardManager
+
+from ...protocol import DataProto
+from ...utils.reward_score import default_compute_score
+from .registry import register
 
 
 @register("diffusion")
@@ -79,7 +79,7 @@ class DiffusionRewardManager(AbstractRewardManager):
             response_images = data_item.batch["responses"]
 
             ground_truth = data_item.non_tensor_batch["reward_model"].get(
-                "ground_truth", None
+                "ground_truth", prompt_str
             )
             data_source = data_item.non_tensor_batch[self.reward_fn_key]
             extra_info = data_item.non_tensor_batch.get("extra_info", {})
@@ -88,6 +88,8 @@ class DiffusionRewardManager(AbstractRewardManager):
             extra_info["num_turns"] = num_turns
             extra_info["rollout_reward_scores"] = rollout_reward_scores
 
+            if isinstance(ground_truth, str):
+                ground_truth = [ground_truth]
             score = self.compute_score(
                 data_source=data_source,
                 solution_str=response_images,

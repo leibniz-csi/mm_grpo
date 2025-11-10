@@ -17,7 +17,6 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from omegaconf import MISSING
-
 from verl.base_config import BaseConfig
 from verl.utils.fs import copy_to_local
 from verl.utils.import_utils import import_external_libs

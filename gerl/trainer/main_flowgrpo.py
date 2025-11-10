@@ -129,7 +129,7 @@ class TaskRunner:
         from verl.single_controller.ray import RayWorkerGroup
 
         if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
-            from gerl.workers.diffusion_fsdp_workers import (
+            from ..workers.diffusion_fsdp_workers import (
                 AsyncDiffusionActorRolloutRefWorker,
                 DiffusionActorRolloutRefWorker,
             )
@@ -358,7 +358,7 @@ def create_rl_dataset(
         dataset (Dataset): The dataset.
     """
 
-    from gerl.utils.dataset.diffusion_dataset import DiffusionTextPromptDataset
+    from ..utils.dataset.diffusion_dataset import DiffusionTextPromptDataset
 
     # Check if a custom dataset class is specified in the data configuration
     # and if the path to the custom class is provided

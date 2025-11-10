@@ -30,6 +30,7 @@ def get_textprompt_data():
 
 def test_rl_dataset():
     from verl.utils.dataset.rl_dataset import collate_fn
+
     from gerl.utils.dataset.diffusion_dataset import DiffusionTextPromptDataset
 
     local_path = get_textprompt_data()

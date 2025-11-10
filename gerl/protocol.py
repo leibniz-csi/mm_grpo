@@ -18,10 +18,10 @@ We can subclass Protocol to define more detailed batch info with specific keys
 """
 
 from dataclasses import dataclass, field
-from tensordict import TensorDict
 
+from tensordict import TensorDict
 from verl import DataProto as verlDataProto
-from verl.protocol import union_tensor_dict, union_numpy_dict
+from verl.protocol import union_numpy_dict, union_tensor_dict
 from verl.utils.py_functional import union_two_dict
 
 __all__ = ["DataProto"]

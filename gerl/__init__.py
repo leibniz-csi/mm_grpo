@@ -15,9 +15,9 @@
 
 import os
 
-from .protocol import (
+from .protocol import (  # FIXME: use our modified version? or change to a new data class name?
     DataProto,
-)  # FIXME: use our modified version? or change to a new data class name?
+)
 
 version_folder = os.path.dirname(os.path.join(os.path.abspath(__file__)))
 

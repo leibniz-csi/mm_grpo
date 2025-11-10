@@ -24,7 +24,9 @@ __all__ = ["register", "get_reward_manager_cls"]
 REWARD_MANAGER_REGISTRY: dict[str, type[AbstractRewardManager]] = {}
 
 
-def register(name: str) -> Callable[[type[AbstractRewardManager]], type[AbstractRewardManager]]:
+def register(
+    name: str,
+) -> Callable[[type[AbstractRewardManager]], type[AbstractRewardManager]]:
     """Decorator to register a reward manager class with a given name.
 
     Args:
