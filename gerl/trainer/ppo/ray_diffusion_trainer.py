@@ -37,6 +37,11 @@ from verl.utils.rollout_skip import RolloutSkip
 
 from ...protocol import DataProto
 from .core_algos import AdvantageEstimator, compute_flow_grpo_outcome_advantage
+from .metric_utils import (
+    compute_diffusion_data_metrics,
+    compute_diffusion_throughout_metrics,
+    compute_diffusion_timing_metrics,
+)
 
 
 def compute_advantage(
@@ -659,7 +664,21 @@ class RayDiffusionPPOTrainer(RayPPOTrainer):
                     }
                 )
                 # collect metrics
-                # TODO (Mike): add metrics
+                metrics.update(compute_diffusion_data_metrics(batch=batch))
+                metrics.update(
+                    compute_diffusion_timing_metrics(batch=batch, timing_raw=timing_raw)
+                )
+                # TODO: implement actual tflpo and theoretical tflpo
+                n_gpus = self.resource_pool_manager.get_n_gpus()
+                metrics.update(
+                    compute_diffusion_throughout_metrics(
+                        batch=batch, timing_raw=timing_raw, n_gpus=n_gpus
+                    )
+                )
+
+                # this is experimental and may be changed/removed in the future in favor of a general-purpose one
+                # if isinstance(self.train_dataloader.sampler, AbstractCurriculumSampler):
+                #     self.train_dataloader.sampler.update(batch=batch)
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)

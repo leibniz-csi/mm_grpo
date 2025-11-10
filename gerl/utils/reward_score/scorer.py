@@ -34,7 +34,7 @@ class Scorer(ABC):
     @staticmethod
     def array_to_images(images: Union[np.ndarray, torch.Tensor]) -> List[Image.Image]:
         if isinstance(images, torch.Tensor):
-            images = images.permute(0, 2, 3, 1).cpu().numpy()
+            images = images.float().permute(0, 2, 3, 1).cpu().numpy()
         assert images.shape[-1] == 3, "must be in NHWC format"
         images = (images * 255).round().clip(0, 255).astype(np.uint8)
         images = [Image.fromarray(image) for image in images]

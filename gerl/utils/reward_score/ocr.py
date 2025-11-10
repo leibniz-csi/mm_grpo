@@ -27,7 +27,7 @@ from .scorer import Scorer
 
 
 class PaddleOcrScorer(Scorer):
-    def __init__(self, use_gpu: bool = False):
+    def __init__(self, use_gpu: bool = True):
         """
         OCR reward calculator
         :param use_gpu: Whether to use GPU acceleration for PaddleOCR
@@ -55,6 +55,8 @@ class PaddleOcrScorer(Scorer):
         :return: Reward scores
         """
         if isinstance(images, (np.ndarray, torch.Tensor)):
+            if images.ndim == 3:
+                images = images.unsqueeze(0)
             images = self.array_to_images(images)
 
         prompts = [prompt.split('"')[1] for prompt in prompts]
@@ -112,7 +114,7 @@ def compute_score(images, prompts, score_name="paddle_ocr"):
     module, cls = SCORERS[score_name]
     module = "gerl.utils.reward_score." + module
     module = importlib.import_module(module)
-    scorer = getattr(module, cls)
+    scorer = getattr(module, cls)()
 
     scores = scorer(images, prompts)
 
