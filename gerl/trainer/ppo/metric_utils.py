@@ -17,9 +17,11 @@ Metrics related to the FlowGRPO trainer.
 """
 
 from typing import Any
+
 import torch
 
 from gerl import DataProto
+
 
 def _compute_diffusion_response_info(batch: DataProto) -> dict[str, Any]:
     """
@@ -35,8 +37,12 @@ def _compute_diffusion_response_info(batch: DataProto) -> dict[str, Any]:
             - prompt_length: Tensor of prompt lengths for each item in the batch
             - response_length: Tensor of response lengths for each item in the batch
     """
-    response_length = batch.batch.fields["responses"].shape[0] # BCHW # TODO: To determine the meaning
-    prompt_length = torch.tensor([len(prompt) for prompt in batch.non_tensor_batch["prompt"]])
+    response_length = batch.batch["responses"].shape[
+        0
+    ]  # BCHW # TODO: To determine the meaning
+    prompt_length = torch.tensor(
+        [len(prompt) for prompt in batch.non_tensor_batch["prompt"]]
+    )
 
     return dict(
         prompt_length=prompt_length,
@@ -67,14 +73,14 @@ def compute_diffusion_data_metrics(batch: DataProto) -> dict[str, Any]:
             - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
             - num_turns/mean, max, min: Statistics about the number of multi-turn conversations
     """
-    sequence_score = batch.batch.fields["instance_level_scores"]
-    sequence_reward = batch.batch.fields["instance_level_rewards"]
+    sequence_score = batch.batch["instance_level_scores"]
+    sequence_reward = batch.batch["instance_level_rewards"]
 
-    advantages = batch.batch.fields["advantages"]
-    returns = batch.batch.fields["returns"]
+    advantages = batch.batch["advantages"]
+    returns = batch.batch["returns"]
 
     response_info = _compute_diffusion_response_info(batch)
-    prompt_length = response_info["prompt_length"]
+    prompt_length = response_info["prompt_length"].float()
     # response_length = response_info["response_length"]
 
     score_mean = torch.mean(sequence_score).detach().item()
@@ -127,7 +133,9 @@ def compute_diffusion_data_metrics(batch: DataProto) -> dict[str, Any]:
     return metrics
 
 
-def compute_diffusion_timing_metrics(batch: DataProto, timing_raw: dict[str, float]) -> dict[str, Any]:
+def compute_diffusion_timing_metrics(
+    batch: DataProto, timing_raw: dict[str, float]
+) -> dict[str, Any]:
     """
     Computes timing metrics for different processing stages in FlowGRPO training.
 
@@ -148,20 +156,27 @@ def compute_diffusion_timing_metrics(batch: DataProto, timing_raw: dict[str, flo
     num_prompt = response_info["prompt_length"].shape[0]
 
     num_instances_of_section = {
-        **{name: num_prompt for name in ["gen", "reward", "old_log_probs", "adv", "update_actor"]},
+        **{
+            name: num_prompt
+            for name in ["gen", "reward", "old_log_probs", "adv", "update_actor"]
+        },
     }
     # keys: start_profile, generation_sequences, generation_timing/max,min,topk_ratio,
     #       gen, reward, old_log_probs, adv, update_actor, step, stop_profile
     return {
         **{f"timing_s/{name}": value for name, value in timing_raw.items()},
         **{
-            f"timing_per_prompt_ms/{name}": timing_raw[name] * 1000 / num_instances_of_section[name]
+            f"timing_per_prompt_ms/{name}": timing_raw[name]
+            * 1000
+            / num_instances_of_section[name]
             for name in set(num_instances_of_section.keys()) & set(timing_raw.keys())
         },
     }
 
 
-def compute_diffusion_throughout_metrics(batch: DataProto, timing_raw: dict[str, float], n_gpus: int) -> dict[str, Any]:
+def compute_diffusion_throughout_metrics(
+    batch: DataProto, timing_raw: dict[str, float], n_gpus: int
+) -> dict[str, Any]:
     """
     Computes throughput metrics for FlowGRPO training.
 
