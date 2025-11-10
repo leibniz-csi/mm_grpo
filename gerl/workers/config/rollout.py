@@ -25,6 +25,8 @@ __all__ = ["DiffusionRolloutConfig"]
 @dataclass
 class SamplingConfig(BaseConfig):
     n: int = 1
+    noise_level: float = 0.0
+    num_inference_steps: int = 40
 
 
 @dataclass
@@ -36,8 +38,11 @@ class DiffusionRolloutConfig(BaseConfig):
     image_height: int = 512
     image_width: int = 512
     rollout_batch_size: int = 8
+    num_inference_steps: int = 40
+    noise_level: float = 0.7
+    guidance_scale: float = 4.5
 
-    dtype: str = "bfloat16"
+    dtype: str = "fp16"
 
     tensor_model_parallel_size: int = 1
     data_parallel_size: int = 1

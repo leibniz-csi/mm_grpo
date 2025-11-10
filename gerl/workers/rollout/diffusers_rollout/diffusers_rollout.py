@@ -18,11 +18,10 @@ Rollout with diffusers models.
 
 import logging
 import os
-from typing import Generator
+from typing import Generator, Optional
 
 import torch
 from diffusers import DiffusionPipeline
-from PIL import Image
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
@@ -42,20 +41,32 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 class DiffusersRollout(BaseRollout):
     def __init__(
         self,
-        rollout_module: DiffusionPipeline,
         config: DiffusionRolloutConfig,
         model_config: DiffusersModelConfig,
         device_mesh: DeviceMesh,
+        rollout_module: Optional[DiffusionPipeline] = None,
     ):
         super().__init__(config, model_config, device_mesh)
-        self.rollout_module = rollout_module
         self.config = config
         self.model_config = model_config
         self.device_mesh = device_mesh
+        if rollout_module is None:
+            raise ValueError("rollout_module must be provided for DiffusersRollout")
+        self.rollout_module = rollout_module
+        self.dtype = torch.float16 if config.dtype == "fp16" else torch.bfloat16
+
+        self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
 
     @GPUMemoryLogger(role="diffusers rollout spmd", logger=logger)
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
+        if self._cached_prompt_embeds is None:
+            self._cached_prompt_embeds = self.cache_prompt_embeds()
+        negative_prompt_embeds = self._cached_prompt_embeds["negative_prompt_embeds"]
+        negative_pooled_prompt_embeds = self._cached_prompt_embeds[
+            "negative_pooled_prompt_embeds"
+        ]
+
         self.rollout_module.transformer.eval()
         micro_batches = prompts.split(self.config.rollout_batch_size)
         generated_results = []
@@ -63,27 +74,30 @@ class DiffusersRollout(BaseRollout):
         for micro_batch in micro_batches:
             input_texts = micro_batch.non_tensor_batch["prompt"].tolist()
 
-            with torch.autocast(device_type=get_device_name(), dtype=torch.bfloat16):
+            noise_level = micro_batch.meta_info.get(
+                "noise_level", self.config.noise_level
+            )
+            num_inference_steps = micro_batch.meta_info.get(
+                "num_inference_steps", self.config.num_inference_steps
+            )
+
+            with torch.autocast(device_type=get_device_name(), dtype=self.dtype):
                 output = self.rollout_module(
                     input_texts,
                     height=self.config.image_height,
                     width=self.config.image_width,
+                    num_inference_steps=num_inference_steps,
+                    guidance_scale=self.config.guidance_scale,
                     max_sequence_length=self.config.prompt_length,
+                    negative_prompt_embeds=negative_prompt_embeds.repeat(
+                        len(input_texts), 1, 1
+                    ),
+                    negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
+                        len(input_texts), 1
+                    ),
                     output_type="pt",
+                    noise_level=noise_level,
                 )
-
-            # TODO (Mike): hard coded, for test only, drop later
-            images_pil = output.images.cpu().float().permute(0, 2, 3, 1).numpy()
-            images_pil = (images_pil * 255).round().astype("uint8")
-            os.makedirs("visual", exist_ok=True)
-            for image in images_pil:
-                assert image.shape == (
-                    self.config.image_height,
-                    self.config.image_width,
-                    3,
-                )
-                uuid = os.urandom(8).hex()
-                Image.fromarray(image).save(f"visual/{uuid}.jpg")
 
             result = TensorDict(
                 {
@@ -103,6 +117,20 @@ class DiffusersRollout(BaseRollout):
             batch = torch.cat(generated_results)
 
         return DataProto(batch=batch)
+
+    def cache_prompt_embeds(self, negative_prompt: str = "") -> torch.Tensor:
+        # TODO (Mike): for stable diffusion 3 only now, need to generalize later
+        prompt_embeds, _, pooled_prompt_embeds, _ = self.rollout_module.encode_prompt(
+            negative_prompt,
+            negative_prompt,
+            negative_prompt,
+            do_classifier_free_guidance=False,
+            max_sequence_length=self.config.prompt_length,
+        )
+        return {
+            "negative_prompt_embeds": prompt_embeds,
+            "negative_pooled_prompt_embeds": pooled_prompt_embeds,
+        }
 
     async def resume(self, tags: list[str]):
         """Resume rollout weights or kv cache in GPU memory.

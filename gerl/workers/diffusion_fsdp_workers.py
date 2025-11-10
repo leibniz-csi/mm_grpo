@@ -278,6 +278,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             torch_dtype = torch.float32 if self._is_actor else torch.bfloat16
         else:
             torch_dtype = PrecisionType.to_dtype(torch_dtype)
+        device = get_device_name()
 
         actor_model_config: dict = DiffusionPipeline.load_config(local_path)
         actor_model_config.update(override_model_config)
@@ -293,9 +294,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
 
             # TODO (Mike): how to pass the actor_model_config into the pipeline?
             pipeline = DiffusionPipeline.from_pretrained(
-                pretrained_model_name_or_path=local_path,
-                torch_dtype=torch_dtype,
-                device_map=get_device_name(),
+                pretrained_model_name_or_path=local_path
             )
             inject_SDE_scheduler_into_pipeline(
                 pipeline, pretrained_model_name_or_path=local_path
@@ -304,6 +303,23 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 raise NotImplementedError(
                     "Only Transformer-based diffusion model is supported now"
                 )
+
+            # freeze parameters of models to save more memory
+            pipeline.vae.requires_grad_(False)
+            pipeline.text_encoder.requires_grad_(False)
+            pipeline.text_encoder_2.requires_grad_(False)
+            pipeline.text_encoder_3.requires_grad_(False)
+            pipeline.transformer.requires_grad_(not self._is_lora)
+
+            # disable safety checker
+            pipeline.safety_checker = None
+
+            # Move vae and text_encoder to device and cast to inference_dtype
+            pipeline.vae.to(device, dtype=torch.float32)
+            pipeline.text_encoder.to(device, dtype=torch_dtype)
+            pipeline.text_encoder_2.to(device, dtype=torch_dtype)
+            pipeline.text_encoder_3.to(device, dtype=torch_dtype)
+            pipeline.transformer.to(device)
 
             actor_module: ModelMixin = pipeline.transformer
 
@@ -338,21 +354,31 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                     lora_config = {
                         "r": self.config.model.lora_rank,
                         "lora_alpha": self.config.model.lora_alpha,
-                        # TODO (Mike): make init_lora_weights configurable
+                        # TODO (Mike): make it configurable
                         "init_lora_weights": "gaussian",
-                        "target_modules": convert_to_regular_types(
-                            self.config.model.target_modules
-                        ),
+                        "target_modules": [
+                            "attn.add_k_proj",
+                            "attn.add_q_proj",
+                            "attn.add_v_proj",
+                            "attn.to_add_out",
+                            "attn.to_k",
+                            "attn.to_out.0",
+                            "attn.to_q",
+                            "attn.to_v",
+                        ],
                         "exclude_modules": convert_to_regular_types(
                             self.config.model.exclude_modules
                         ),
-                        # TODO (Mike): double check default bias value
                         "bias": "none",
                     }
                     actor_module = get_peft_model(
                         actor_module, LoraConfig(**lora_config)
                     )
                 pipeline.transformer = actor_module
+
+        # TODO (Mike): add EMA Wrapper
+
+        torch.backends.cuda.matmul.allow_tf32 = True
 
         self.use_orig_params = fsdp_config.get("use_orig_params", False)
 
@@ -560,10 +586,10 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             f"Before building {self.config.rollout.name} rollout", logger=logger
         )
         self.rollout = get_rollout_class(rollout_config.name, rollout_config.mode)(
-            rollout_module=actor_rollout_module,
             config=rollout_config,
             model_config=model_config,
             device_mesh=rollout_device_mesh,
+            rollout_module=actor_rollout_module,
         )
         log_gpu_memory_usage(
             f"After building {self.config.rollout.name} rollout", logger=logger

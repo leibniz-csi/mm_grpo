@@ -327,6 +327,7 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
                     noise_pred,
                     t,
                     latents,
+                    generator=generator,
                     noise_level=cur_noise_level,
                     sde_type=sde_type,
                     return_dict=False,
