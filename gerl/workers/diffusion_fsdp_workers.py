@@ -376,6 +376,10 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                     )
                 pipeline.transformer = actor_module
 
+        # TODO (Mike): add EMA Wrapper
+
+        torch.backends.cuda.matmul.allow_tf32 = True
+
         self.use_orig_params = fsdp_config.get("use_orig_params", False)
 
         torch.distributed.barrier()
