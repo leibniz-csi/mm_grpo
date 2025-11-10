@@ -264,7 +264,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         # TODO (Mike): need refactor structure, this is worker module,
         # we should avoid to import function from specific rollout
-        from gerl.workers.rollout.diffusers_rollout.utils import (
+        from .rollout.diffusers_rollout.utils import (
             inject_SDE_scheduler_into_pipeline,
         )
 
@@ -614,7 +614,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def init_model(self):
-        from gerl.workers.actor import DiffusersPPOActor
+        from .actor import DiffusersPPOActor
 
         # This is used to import external_lib into the huggingface systems
         import_external_libs(self.config.model.get("external_lib", None))

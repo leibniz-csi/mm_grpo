@@ -33,8 +33,8 @@ from verl.utils.transferqueue_utils import tqbridge
 from verl.workers.reward_manager.abstract import (AbstractRewardManager,
                                                   RawRewardFn)
 
-from gerl.utils.reward_score import default_compute_score
-from gerl.workers.reward_manager import get_reward_manager_cls
+from ...utils.reward_score import default_compute_score
+from ...workers.reward_manager import get_reward_manager_cls
 
 
 def _call_with_kwargs(raw_fn, extra_kwargs, *args, **kwargs):

@@ -20,7 +20,7 @@ from typing import Any
 
 import torch
 
-from gerl import DataProto
+from ...protocol import DataProto
 
 
 def _compute_diffusion_response_info(batch: DataProto) -> dict[str, Any]:

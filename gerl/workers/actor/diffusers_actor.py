@@ -34,8 +34,8 @@ from verl.utils.py_functional import append_to_dict
 from verl.workers.actor import BasePPOActor
 from verl.workers.config import ActorConfig
 
-from gerl import DataProto
-from gerl.trainer.ppo.core_algos import get_policy_loss_fn
+from ...protocol import DataProto
+from ...trainer.ppo.core_algos import get_policy_loss_fn
 
 __all__ = ["DiffusersPPOActor"]
 
