@@ -5,7 +5,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     data.train_files=$HOME/dataset/ocr/train.txt \
     data.val_files=$HOME/dataset/ocr/test.txt \
     data.train_batch_size=2 \
-    data.val_max_samples=8 \
+    data.val_max_samples=16 \
     data.max_prompt_length=128 \
     data.filter_overlong_prompts=False \
     actor_rollout_ref.model.path=stabilityai/stable-diffusion-3.5-medium \
