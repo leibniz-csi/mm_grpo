@@ -13,4 +13,5 @@
 # limitations under the License.
 # ============================================================================
 
-from .pipeline_stable_diffusion_3 import StableDiffusion3PipelineWithLogProb  # noqa: F401
+from .pipeline_stable_diffusion_3 import \
+    StableDiffusion3PipelineWithLogProb  # noqa: F401

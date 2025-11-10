@@ -1,0 +1,138 @@
+# Copyright 2025 Huawei Technologies Co., Ltd
+#
+# Adapted from https://github.com/yifan123/flow_grpo/blob/main/flow_grpo/ocr.py
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+# ============================================================================
+
+import importlib
+from typing import List, Union
+
+import numpy as np
+import torch
+from Levenshtein import distance
+from PIL import Image
+
+from .scorer import Scorer
+
+
+class PaddleOcrScorer(Scorer):
+    def __init__(self, use_gpu: bool = True):
+        """
+        OCR reward calculator
+        :param use_gpu: Whether to use GPU acceleration for PaddleOCR
+        """
+        from paddleocr import PaddleOCR
+
+        # TODO (susan): assign specific GPU id?
+        self.ocr = PaddleOCR(
+            use_angle_cls=False,
+            lang="en",
+            use_gpu=use_gpu,
+            show_log=False,  # Disable unnecessary log output
+        )
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
+        prompts: List[str],
+    ) -> List[float]:
+        """
+        Calculate OCR reward
+        :param images: List of input images (PIL or numpy format)
+        :param prompts: Corresponding target text list
+        :return: Reward scores
+        """
+        if isinstance(images, (np.ndarray, torch.Tensor)):
+            if images.ndim == 3:
+                images = images.unsqueeze(0)
+            images = self.array_to_images(images)
+
+        prompts = [prompt.split('"')[1] for prompt in prompts]
+        rewards = []
+        # Ensure input lengths are consistent
+        assert len(images) == len(prompts), (
+            "Images and prompts must have the same length"
+        )
+        for img, prompt in zip(images, prompts):
+            # Convert image format
+            if isinstance(img, Image.Image):
+                img = np.array(img)
+
+            try:
+                # OCR recognition
+                result = self.ocr.ocr(img, cls=False)
+                # Extract recognized text (handle possible multi-line results)
+                recognized_text = (
+                    "".join([res[1][0] if res[1][1] > 0 else "" for res in result[0]])
+                    if result[0]
+                    else ""
+                )
+
+                recognized_text = recognized_text.replace(" ", "").lower()
+                prompt = prompt.replace(" ", "").lower()
+                if prompt in recognized_text:
+                    dist = 0
+                else:
+                    dist = distance(recognized_text, prompt)
+                # Recognized many unrelated characters, only add one character penalty
+                if dist > len(prompt):
+                    dist = len(prompt)
+
+            except Exception as e:
+                # Error handling (e.g., OCR parsing failure)
+                print(f"OCR processing failed: {str(e)}")
+                dist = len(prompt)  # Maximum penalty
+            reward = 1 - dist / (len(prompt))
+            rewards.append(reward)
+
+        return rewards
+
+
+def compute_score(images, prompts, score_name="paddle_ocr"):
+    """
+    Compute OCR reward score for a batch of images and prompts.
+    It supports reward models named:
+    - "paddle_ocr": PaddleOCR (default)
+    - "qwenvl_ocr_vllm": Qwen2.5-VL as OCR scorer (vllm version)
+    """
+    SCORERS = {
+        "paddle_ocr": ("ocr", "PaddleOcrScorer"),
+        "qwenvl_ocr_vllm": ("vllm", "QwenVLOcrVLLMScorer"),
+    }
+    module, cls = SCORERS[score_name]
+    module = "gerl.utils.reward_score." + module
+    module = importlib.import_module(module)
+    scorer = getattr(module, cls)()
+
+    scores = scorer(images, prompts)
+
+    return scores
+
+
+def test_paddle_ocr_scorer():
+    example_image_path = "media_images_eval_images_499_ef42de47b8ec98892954.jpg"
+    example_image = Image.open(example_image_path)
+    example_prompt = (
+        'New York Skyline with "Hello World" written with fireworks on the sky'
+    )
+    # Instantiate scorer
+    scorer = PaddleOcrScorer(use_gpu=False)
+    # Call scorer and print result
+    reward = scorer([example_image], [example_prompt])
+    print(f"OCR Reward: {reward}")
+
+
+if __name__ == "__main__":
+    test_paddle_ocr_scorer()

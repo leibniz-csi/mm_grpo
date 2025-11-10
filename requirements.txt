@@ -26,3 +26,8 @@ math_verify
 tensorboard
 verl
 diffusers
+
+# for PaddleOCR requirements
+# paddlepaddle-gpu==2.6.2
+# paddleocr==2.9.1
+# python-Levenshtein
