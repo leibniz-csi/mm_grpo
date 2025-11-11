@@ -28,7 +28,6 @@ import psutil
 import torch
 import torch.distributed
 from omegaconf import DictConfig, OmegaConf, open_dict
-from peft import LoraConfig, get_peft_model
 from safetensors.torch import save_file
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
@@ -88,6 +87,7 @@ from verl.workers.config.optimizer import build_optimizer
 from verl.workers.fsdp_workers import create_device_mesh, get_sharding_strategy
 
 from ..protocol import DataProto
+from ..utils.lora import select_lora_modules
 from .config import DiffusersModelConfig, DiffusionRolloutConfig
 from .rollout import get_rollout_class
 
@@ -250,7 +250,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         model_path,
         fsdp_config: FSDPEngineConfig,
         optim_config,
-        override_model_config,
         use_fused_kernels=False,
         enable_gradient_checkpointing=False,
         role="actor",
@@ -281,7 +280,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         device = get_device_name()
 
         actor_model_config: dict = DiffusionPipeline.load_config(local_path)
-        actor_model_config.update(override_model_config)
+
         if self.rank == 0:
             print(f"Model config after override: {actor_model_config}")
 
@@ -350,22 +349,19 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                         actor_module, local_adapter_path, is_trainable=True
                     )
                 else:
+                    from peft import LoraConfig, get_peft_model
+
                     # Convert config to regular Python types before creating PEFT model
                     lora_config = {
                         "r": self.config.model.lora_rank,
                         "lora_alpha": self.config.model.lora_alpha,
-                        # TODO (Mike): make it configurable
-                        "init_lora_weights": "gaussian",
-                        "target_modules": [
-                            "attn.add_k_proj",
-                            "attn.add_q_proj",
-                            "attn.add_v_proj",
-                            "attn.to_add_out",
-                            "attn.to_k",
-                            "attn.to_out.0",
-                            "attn.to_q",
-                            "attn.to_v",
-                        ],
+                        "init_lora_weights": self.config.model.lora_init_weights,
+                        "target_modules": convert_to_regular_types(
+                            select_lora_modules(
+                                model_name=os.path.basename(model_path),
+                                target_modules=self.config.model.target_modules,
+                            )
+                        ),
                         "exclude_modules": convert_to_regular_types(
                             self.config.model.exclude_modules
                         ),
@@ -544,9 +540,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         rollout_config: DiffusionRolloutConfig = omega_conf_to_dataclass(
             self.config.rollout
         )
-        model_config: DiffusersModelConfig = omega_conf_to_dataclass(
-            self.config.model, dataclass_type=DiffusersModelConfig
-        )
+        model_config: DiffusersModelConfig = omega_conf_to_dataclass(self.config.model)
         self.model_config = model_config
 
         # 2. build rollout device mesh
@@ -645,9 +639,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         # This is used to import external_lib into the huggingface systems
         import_external_libs(self.config.model.get("external_lib", None))
 
-        override_model_config = OmegaConf.to_container(
-            OmegaConf.create(self.config.model.get("override_config", {}))
-        )
         use_shm = self.config.model.get("use_shm", False)
         use_fused_kernels = self.config.model.get("use_fused_kernels", False)
 
@@ -671,13 +662,10 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 model_path=local_path,
                 fsdp_config=fsdp_config,
                 optim_config=optim_config,
-                override_model_config=override_model_config,
                 use_fused_kernels=use_fused_kernels,
                 enable_gradient_checkpointing=self.config.model.get(
                     "enable_gradient_checkpointing", False
                 ),
-                trust_remote_code=self.config.model.get("trust_remote_code", False),
-                use_liger=self.config.model.get("use_liger", False),
                 role="actor",
                 enable_activation_offload=self.config.model.get(
                     "enable_activation_offload", False
@@ -725,10 +713,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 model_path=local_path,
                 fsdp_config=omega_conf_to_dataclass(self.config.ref.fsdp_config),
                 optim_config=None,
-                override_model_config=override_model_config,
                 use_fused_kernels=use_fused_kernels,
-                trust_remote_code=self.config.model.get("trust_remote_code", False),
-                use_liger=self.config.model.get("use_liger", False),
                 role="ref",
             )[0]
             OmegaConf.set_struct(self.config.ref, True)
