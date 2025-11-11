@@ -34,11 +34,11 @@ class DiffusionRolloutConfig(BaseConfig):
     name: Optional[str] = MISSING
     mode: str = "sync"
 
-    prompt_length: int = 512
+    prompt_length: int = 128
     image_height: int = 512
     image_width: int = 512
     rollout_batch_size: int = 8
-    num_inference_steps: int = 40
+    num_inference_steps: int = 10
     noise_level: float = 0.7
     guidance_scale: float = 4.5
 

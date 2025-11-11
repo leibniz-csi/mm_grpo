@@ -22,7 +22,7 @@ defaults:
   - rollout@actor_rollout_ref.rollout: rollout
 
   # Model config.
-  - model@actor_rollout_ref.model: hf_model
+  - model@actor_rollout_ref.model: diffusers_model
 
   # Critic model config.
   - critic@critic: dp_critic

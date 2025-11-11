@@ -20,6 +20,7 @@ import logging
 import os
 from typing import Generator, Optional
 
+import numpy as np
 import torch
 from diffusers import DiffusionPipeline
 from tensordict import TensorDict
@@ -69,6 +70,7 @@ class DiffusersRollout(BaseRollout):
 
         self.rollout_module.transformer.eval()
         micro_batches = prompts.split(self.config.rollout_batch_size)
+        generated_input_texts = []
         generated_results = []
 
         for micro_batch in micro_batches:
@@ -114,9 +116,12 @@ class DiffusersRollout(BaseRollout):
             )
 
             generated_results.append(result)
-            batch = torch.cat(generated_results)
+            generated_input_texts.extend(input_texts)
 
-        return DataProto(batch=batch)
+        return DataProto(
+            batch=torch.cat(generated_results),
+            non_tensor_batch={"prompt": np.array(generated_input_texts)},
+        )
 
     def cache_prompt_embeds(self, negative_prompt: str = "") -> torch.Tensor:
         # TODO (Mike): for stable diffusion 3 only now, need to generalize later
