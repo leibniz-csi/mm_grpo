@@ -113,7 +113,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         if prev_sample is not None:
             prev_sample = prev_sample.to(torch.float32)
 
-        prev_sample, log_prob, prev_sample_mean, std_dev_t = self.compute_log_prob(
+        prev_sample, log_prob, prev_sample_mean, std_dev_t = self.sample_previous_step(
             sample=sample,
             model_output=model_output,
             generator=generator,
@@ -138,7 +138,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
             std_dev_t=std_dev_t,
         )
 
-    def compute_log_prob(
+    def sample_previous_step(
         self,
         sample: torch.Tensor,
         model_output: torch.Tensor,
@@ -156,10 +156,17 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         else:
             if timestep is None:
                 sigma_idx = self.step_index
+                sigma = self.sigmas[sigma_idx]
+                sigma_next = self.sigmas[sigma_idx + 1]
             else:
-                sigma_idx = self.index_for_timestep(timestep)
-            sigma = self.sigmas[sigma_idx]
-            sigma_next = self.sigmas[sigma_idx + 1]
+                sigma_idx = torch.tensor([self.index_for_timestep(t) for t in timestep])
+                sigma = self.sigmas[sigma_idx].view(
+                    -1, *([1] * (len(sample.shape) - 1))
+                )
+                sigma_next = self.sigmas[sigma_idx + 1].view(
+                    -1, *([1] * (len(sample.shape) - 1))
+                )
+
             sigma_max = self.sigmas[1].item()
             dt = sigma_next - sigma
 
