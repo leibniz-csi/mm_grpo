@@ -32,8 +32,8 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.guidance_scale=4.5 \
     reward_model.reward_manager=diffusion \
     trainer.logger='["console"]' \
-    trainer.project_name='flow_grpo_sd35_ocr' \
-    trainer.experiment_name='sd_35_medium_function_rm' \
+    trainer.project_name='flow_grpo_sd35' \
+    trainer.experiment_name='rm_ocr' \
     trainer.n_gpus_per_node=1 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \

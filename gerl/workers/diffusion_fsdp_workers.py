@@ -246,11 +246,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             torch_dtype = PrecisionType.to_dtype(torch_dtype)
         device = get_device_name()
 
-        actor_model_config: dict = DiffusionPipeline.load_config(local_path)
-
-        if self.rank == 0:
-            print(f"Model config after override: {actor_model_config}")
-
         init_context = get_init_weight_context_manager(
             use_meta_tensor=True, mesh=self.device_mesh
         )
@@ -258,7 +253,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
-            # TODO (Mike): how to pass the actor_model_config into the pipeline?
             pipeline = DiffusionPipeline.from_pretrained(
                 pretrained_model_name_or_path=local_path
             )
@@ -341,10 +335,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         # TODO (Mike): add EMA Wrapper
 
-        torch.backends.cuda.matmul.allow_tf32 = True
-
-        self.use_orig_params = fsdp_config.get("use_orig_params", False)
-
         torch.distributed.barrier()
 
         if self.rank == 0:
@@ -402,7 +392,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 mixed_precision=mixed_precision,
                 sync_module_states=True,
                 device_mesh=self.device_mesh,
-                use_orig_params=self.use_orig_params,
+                use_orig_params=fsdp_config.get("use_orig_params", False),
                 forward_prefetch=fsdp_config.get("forward_prefetch", False),
             )
         elif fsdp_strategy == "fsdp2":
@@ -494,13 +484,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             actor_optimizer = None
             actor_lr_scheduler = None
 
-        return (
-            pipeline,
-            actor_module_fsdp,
-            actor_optimizer,
-            actor_lr_scheduler,
-            actor_model_config,
-        )
+        return (pipeline, actor_module_fsdp, actor_optimizer, actor_lr_scheduler)
 
     def _build_rollout(self, actor_rollout_module):
         # 1. parse rollout and huggingface model config
@@ -624,7 +608,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.actor_module_fsdp,
                 self.actor_optimizer,
                 self.actor_lr_scheduler,
-                self.actor_model_config,
             ) = self._build_model_optimizer(
                 model_path=local_path,
                 fsdp_config=fsdp_config,
