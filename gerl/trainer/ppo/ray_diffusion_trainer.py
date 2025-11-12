@@ -30,7 +30,6 @@ from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
 from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
 from verl.single_controller.ray.base import create_colocated_worker_cls
-from verl.trainer.ppo.core_algos import AdaptiveKLController
 from verl.trainer.ppo.metric_utils import process_validation_metrics
 from verl.trainer.ppo.ray_trainer import ResourcePoolManager
 from verl.trainer.ppo.reward import compute_reward, compute_reward_async
@@ -60,11 +59,6 @@ from .metric_utils import (
     compute_diffusion_throughout_metrics,
     compute_diffusion_timing_metrics,
 )
-
-
-def apply_kl_penalty(data: DataProto, kl_ctrl: AdaptiveKLController, kl_penalty="kl"):
-    """Apply KL penalty to the instance-level rewards."""
-    raise NotImplementedError
 
 
 def compute_advantage(
