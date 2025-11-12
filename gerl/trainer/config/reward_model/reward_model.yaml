@@ -44,12 +44,6 @@ micro_batch_size_per_gpu: null
 # Maximum sequence length to process for scoring
 max_length: null
 
-# Whether to dynamically adjust batch size at runtime
-use_dynamic_bsz: ${critic.use_dynamic_bsz}
-
-# Maximum number of tokens per GPU in one forward pass
-forward_max_token_len_per_gpu: ${critic.forward_max_token_len_per_gpu}
-
 # Reward Manager. This defines the mechanism of computing rule-based reward and handling different reward sources.
 # Default is naive. If all verification functions are multiprocessing-safe,
 # the reward manager can be set to prime for parallel verification.

@@ -29,6 +29,9 @@ noise_level: 0.7
 # guidance scale for classifier-free guidance
 guidance_scale: 4.5
 
+# SDE type during rollout
+sde_type: "sde"
+
 # for diffusers rollout
 # Rollout dtype. Shoudd Align with actor model's FSDP/Megatron type.
 dtype: fp16

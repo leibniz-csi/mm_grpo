@@ -41,6 +41,7 @@ class DiffusionRolloutConfig(BaseConfig):
     num_inference_steps: int = 10
     noise_level: float = 0.7
     guidance_scale: float = 4.5
+    sde_type: str = "sde"
 
     dtype: str = "fp16"
 

@@ -150,33 +150,6 @@ class TaskRunner:
 
         return actor_rollout_cls, ray_worker_group_cls
 
-    def add_critic_worker(self, config):
-        """Add critic worker to role mapping."""
-        if config.critic.strategy in {"fsdp", "fsdp2"}:
-            use_legacy_worker_impl = config.trainer.get(
-                "use_legacy_worker_impl", "auto"
-            )
-            if use_legacy_worker_impl in ["auto", "enable"]:
-                from verl.workers.fsdp_workers import CriticWorker
-            elif use_legacy_worker_impl == "disable":
-                from verl.workers.roles import CriticWorker
-
-                print("Using new worker implementation")
-            else:
-                raise ValueError(
-                    f"Invalid use_legacy_worker_impl: {use_legacy_worker_impl}"
-                )
-
-        elif config.critic.strategy == "megatron":
-            from verl.workers.megatron_workers import CriticWorker
-
-        else:
-            raise NotImplementedError
-
-        from verl.trainer.ppo.ray_trainer import Role
-
-        self.role_worker_mapping[Role.Critic] = ray.remote(CriticWorker)
-
     def init_resource_pool_mgr(self, config):
         """Initialize resource pool manager."""
         from verl.trainer.ppo.ray_trainer import Role
@@ -200,7 +173,6 @@ class TaskRunner:
             resource_pool_spec["reward_pool"] = reward_pool
 
         self.mapping[Role.ActorRollout] = global_pool_id
-        self.mapping[Role.Critic] = global_pool_id
         from verl.trainer.ppo.ray_trainer import ResourcePoolManager
 
         resource_pool_manager = ResourcePoolManager(
@@ -239,13 +211,10 @@ class TaskRunner:
                 self.mapping[Role.RewardModel] = "global_pool"
 
     def add_ref_policy_worker(self, config, ref_policy_cls):
-        """Add reference policy worker if KL loss or KL reward is used."""
+        """Add reference policy worker if KL loss is used."""
         from verl.trainer.ppo.ray_trainer import Role
 
-        if (
-            config.algorithm.use_kl_in_reward
-            or config.actor_rollout_ref.actor.use_kl_loss
-        ):
+        if config.actor_rollout_ref.actor.use_kl_loss:
             self.role_worker_mapping[Role.RefPolicy] = ray.remote(ref_policy_cls)
             self.mapping[Role.RefPolicy] = "global_pool"
 
@@ -269,7 +238,6 @@ class TaskRunner:
         OmegaConf.resolve(config)
 
         actor_rollout_cls, ray_worker_group_cls = self.add_actor_rollout_worker(config)
-        self.add_critic_worker(config)
 
         # We should adopt a multi-source reward function here:
         # - for rule-based rm, we directly call a reward score
@@ -324,8 +292,6 @@ class TaskRunner:
         # Initialize the PPO trainer.
         trainer = RayDiffusionPPOTrainer(
             config=config,
-            tokenizer=tokenizer,
-            processor=processor,
             role_worker_mapping=self.role_worker_mapping,
             resource_pool_manager=resource_pool_manager,
             ray_worker_group_cls=ray_worker_group_cls,

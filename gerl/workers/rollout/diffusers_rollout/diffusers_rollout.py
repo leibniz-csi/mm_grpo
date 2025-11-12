@@ -105,7 +105,7 @@ class DiffusersRollout(BaseRollout):
                 {
                     "responses": output.images,
                     "latents": output.all_latents,
-                    "log_probs": output.all_log_probs,
+                    "old_log_probs": output.all_log_probs,
                     "timesteps": output.all_timesteps,
                     "prompt_embeds": output.prompt_embeds,
                     "pooled_prompt_embeds": output.pooled_prompt_embeds,
@@ -118,10 +118,12 @@ class DiffusersRollout(BaseRollout):
             generated_results.append(result)
             generated_input_texts.extend(input_texts)
 
-        return DataProto(
+        result = DataProto(
             batch=torch.cat(generated_results),
             non_tensor_batch={"prompt": np.array(generated_input_texts)},
         )
+        result.meta_info["cached_steps"] = result.batch["timesteps"].shape[1]
+        return result
 
     def cache_prompt_embeds(self, negative_prompt: str = "") -> torch.Tensor:
         # TODO (Mike): for stable diffusion 3 only now, need to generalize later

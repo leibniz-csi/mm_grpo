@@ -31,19 +31,15 @@ from typing import Any, Callable, Optional
 import numpy as np
 import torch
 from omegaconf import DictConfig
-from verl.trainer.config import AlgoConfig
 
 PolicyLossFn = Callable[
     [
         torch.Tensor,  # old_log_prob
         torch.Tensor,  # log_prob
         torch.Tensor,  # advantages
-        torch.Tensor,  # response_mask
-        str,  # loss_agg_mode
-        Optional[DictConfig | AlgoConfig],  # config
-        torch.Tensor | None,  # rollout_log_probs
+        Optional[DictConfig],  # config
     ],
-    tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor],
+    torch.Tensor,
 ]
 
 POLICY_LOSS_REGISTRY: dict[str, PolicyLossFn] = {}
@@ -93,17 +89,6 @@ class AdvantageEstimator(str, Enum):
     estimator instead.
     """
 
-    # GAE = "gae"
-    # GRPO = "grpo"
-    # REINFORCE_PLUS_PLUS = "reinforce_plus_plus"
-    # REINFORCE_PLUS_PLUS_BASELINE = "reinforce_plus_plus_baseline"
-    # REMAX = "remax"
-    # RLOO = "rloo"
-    # OPO = "opo"
-    # GRPO_PASSK = "grpo_passk"
-    # GPG = "gpg"
-    # RLOO_VECTORIZED = "rloo_vectorized"
-    # GRPO_VECTORIZED = "grpo_vectorized"
     FLOW_GRPO = "flow_grpo"  # newly added for diffusion models
 
 
@@ -151,9 +136,10 @@ def get_adv_estimator_fn(name_or_enum):
 def compute_flow_grpo_outcome_advantage(
     instance_level_rewards: torch.Tensor,
     index: np.ndarray,
-    epsilon: float = 1e-6,
+    epsilon: float = 1e-4,
     norm_adv_by_std_in_grpo: bool = True,
-    config: Optional[AlgoConfig] = None,
+    global_std: bool = True,
+    config: Optional[DictConfig] = None,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     """
     Compute advantage for GRPO, operating only on Outcome reward
@@ -168,7 +154,7 @@ def compute_flow_grpo_outcome_advantage(
             small value to avoid division by zero
         norm_adv_by_std_in_grpo: `(bool)`
             whether to scale the GRPO advantage
-        config: `(Optional[AlgoConfig])`
+        config: `(Optional[DictConfig])`
             algorithm configuration object
 
     Note:
@@ -198,7 +184,10 @@ def compute_flow_grpo_outcome_advantage(
             elif len(id2score[idx]) > 1:
                 scores_tensor = torch.stack(id2score[idx])
                 id2mean[idx] = torch.mean(scores_tensor)
-                id2std[idx] = torch.std(scores_tensor)
+                if global_std:
+                    id2std[idx] = torch.std(scores)
+                else:
+                    id2std[idx] = torch.std(scores_tensor)
             else:
                 raise ValueError(f"no score in prompt index: {idx}")
         for i in range(bsz):
@@ -212,16 +201,15 @@ def compute_flow_grpo_outcome_advantage(
     return scores, scores
 
 
-@register_policy_loss("vanilla_diffusion")  # type: ignore[arg-type]
-def compute_policy_loss_vanilla_diffusion(
+@register_policy_loss("flow_grpo")  # type: ignore[arg-type]
+def compute_policy_loss_flow_grpo(
     old_log_prob: torch.Tensor,
     log_prob: torch.Tensor,
     advantages: torch.Tensor,
-    t_step: int,
-    config: Optional[DictConfig | AlgoConfig] = None,
+    config: DictConfig,
 ) -> torch.Tensor:
     """
-    Compute the clipped policy objective and related metrics for PPO.
+    Compute the clipped policy objective and related metrics for FlowGRPO.
 
     Adapted from
     https://github.com/yifan123/flow_grpo/blob/main/scripts/train_sd3_fast.py#L885
@@ -236,26 +224,29 @@ def compute_policy_loss_vanilla_diffusion(
         config: `(verl.trainer.config.ActorConfig)`:
             config for the actor.
     """
-
-    assert config is not None
-    assert not isinstance(config, AlgoConfig)
-    # TODO (Mike): add clip_max to ActorConfig
-    clip_max = config.get("clip_max", 5.0)
-    clip_ratio = config.clip_ratio
-
-    old_log_prob = old_log_prob[:, t_step]
-
     advantages = torch.clamp(
         advantages,
-        -clip_max,
-        clip_max,
+        -config.clip_max,
+        config.clip_max,
     )
     ratio = torch.exp(log_prob - old_log_prob)
     unclipped_loss = -advantages * ratio
     clipped_loss = -advantages * torch.clamp(
         ratio,
-        1.0 - clip_ratio,
-        1.0 + clip_ratio,
+        1.0 - config.clip_ratio,
+        1.0 + config.clip_ratio,
     )
     policy_loss = torch.mean(torch.maximum(unclipped_loss, clipped_loss))
     return policy_loss
+
+
+def kl_penalty(
+    prev_sample_mean: torch.FloatTensor,
+    prev_sample_mean_ref: torch.FloatTensor,
+    std_dev_t: torch.FloatTensor,
+) -> torch.FloatTensor:
+    """Compute KL divergence"""
+    kl_loss = ((prev_sample_mean - prev_sample_mean_ref) ** 2).mean(
+        dim=(1, 2, 3), keepdim=True
+    ) / (2 * std_dev_t**2)
+    return kl_loss
