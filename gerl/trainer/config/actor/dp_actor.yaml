@@ -27,13 +27,3 @@ strategy: fsdp
 
 # Gradient clipping for actor updates, specific to the strategy.
 grad_clip: 1.0
-
-# Sequence parallelism size for Ulysses-style model parallelism
-# oc.select: the default val for ref.ulysses_sequence_parallel_size
-ulysses_sequence_parallel_size: 1
-
-# calculate entropy with chunking to reduce memory peak
-entropy_from_logits_with_chunking: False
-
-# recompute entropy
-entropy_checkpointing: False

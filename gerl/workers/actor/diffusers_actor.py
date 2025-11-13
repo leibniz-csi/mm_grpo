@@ -104,7 +104,6 @@ class DiffusersPPOActor(BasePPOActor):
                     return_dict=False,
                 )[0]
 
-            # TODO (Mike): double check if the computation is correct
             prev_sample, log_prob, prev_sample_mean, std_dev_t = (
                 self.scheduler.sample_previous_step(
                     sample=latents[:, step],
@@ -211,9 +210,11 @@ class DiffusersPPOActor(BasePPOActor):
 
                     if self.config.use_kl_loss:
                         with torch.no_grad():
-                            _, _, prev_sample_mean_ref, _ = self._forward_micro_batch(
-                                model_inputs, step=step
-                            )
+                            # TODO (Mike): handle non-lora case
+                            with self.actor_module.disable_adapter():
+                                _, _, prev_sample_mean_ref, _ = (
+                                    self._forward_micro_batch(model_inputs, step=step)
+                                )
 
                     policy_loss_fn = get_policy_loss_fn(
                         self.config.policy_loss.loss_mode

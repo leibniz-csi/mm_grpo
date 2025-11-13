@@ -27,7 +27,7 @@ model:
   fsdp_config:
 
     # Target configuration dataclass
-    _target_: verl.workers.config.FSDPEngineConfig
+    _target_: gerl.workers.config.FSDPEngineConfig
 
     # Policy for wrapping layers with FSDP
     wrap_policy:
@@ -47,6 +47,3 @@ model:
     # Only for FSDP1: FSDP1 configuration, prefetch the next forward-pass all-gather
     # before the current forward computation.
     forward_prefetch: False
-
-# Sequence parallelism size for Ulysses-style model parallelism
-ulysses_sequence_parallel_size: 1

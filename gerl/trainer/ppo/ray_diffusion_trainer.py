@@ -387,6 +387,7 @@ class RayDiffusionPPOTrainer:
             test_gen_batch.meta_info = {
                 "noise_level": self.config.actor_rollout_ref.rollout.val_kwargs.noise_level,
                 "num_inference_steps": self.config.actor_rollout_ref.rollout.val_kwargs.num_inference_steps,
+                "noise_seed": self.config.actor_rollout_ref.rollout.val_kwargs.seed,
                 "validate": True,
                 "global_steps": self.global_steps,
             }
@@ -619,16 +620,6 @@ class RayDiffusionPPOTrainer:
         print(f"local_global_step_folder: {local_global_step_folder}")
         actor_local_path = os.path.join(local_global_step_folder, "actor")
 
-        actor_remote_path = (
-            None
-            if self.config.trainer.default_hdfs_dir is None
-            else os.path.join(
-                self.config.trainer.default_hdfs_dir,
-                f"global_step_{self.global_steps}",
-                "actor",
-            )
-        )
-
         remove_previous_ckpt_in_save = self.config.trainer.get(
             "remove_previous_ckpt_in_save", False
         )
@@ -645,7 +636,6 @@ class RayDiffusionPPOTrainer:
 
         self.actor_rollout_wg.save_checkpoint(
             actor_local_path,
-            actor_remote_path,
             self.global_steps,
             max_ckpt_to_keep=max_actor_ckpt_to_keep,
         )

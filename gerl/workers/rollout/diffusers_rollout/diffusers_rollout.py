@@ -73,6 +73,12 @@ class DiffusersRollout(BaseRollout):
         generated_input_texts = []
         generated_results = []
 
+        seed = prompts.meta_info.get("seed", None)
+        if seed is not None:
+            generator = torch.Generator(device=get_device_name()).manual_seed(seed)
+        else:
+            generator = None
+
         for micro_batch in micro_batches:
             input_texts = micro_batch.non_tensor_batch["prompt"].tolist()
 
@@ -90,6 +96,7 @@ class DiffusersRollout(BaseRollout):
                     width=self.config.image_width,
                     num_inference_steps=num_inference_steps,
                     guidance_scale=self.config.guidance_scale,
+                    generator=generator,
                     max_sequence_length=self.config.prompt_length,
                     negative_prompt_embeds=negative_prompt_embeds.repeat(
                         len(input_texts), 1, 1
@@ -99,6 +106,9 @@ class DiffusersRollout(BaseRollout):
                     ),
                     output_type="pt",
                     noise_level=noise_level,
+                    sde_window_size=self.config.sde_window_size,
+                    sde_window_range=self.config.sde_window_range,
+                    sde_type=self.config.sde_type,
                 )
 
             result = TensorDict(

@@ -14,7 +14,7 @@
 # ============================================================================
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 from omegaconf import MISSING
 from verl.base_config import BaseConfig
@@ -27,6 +27,7 @@ class SamplingConfig(BaseConfig):
     n: int = 1
     noise_level: float = 0.0
     num_inference_steps: int = 40
+    seed: int = 42
 
 
 @dataclass
@@ -41,9 +42,11 @@ class DiffusionRolloutConfig(BaseConfig):
     num_inference_steps: int = 10
     noise_level: float = 0.7
     guidance_scale: float = 4.5
-    sde_type: str = "sde"
+    sde_type: Literal["sde", "cps"] = "sde"
+    sde_window_size: Optional[int] = None
+    sde_window_range: Optional[tuple[int, int]] = None
 
-    dtype: str = "fp16"
+    dtype: str = "bf16"
 
     tensor_model_parallel_size: int = 1
     data_parallel_size: int = 1
