@@ -6,6 +6,8 @@ python3 -m gerl.trainer.main_flowgrpo \
     data.val_max_samples=16 \
     data.max_prompt_length=128 \
     data.filter_overlong_prompts=False \
+    data.data_source=ocr \
+    data.reward_fn='["jpeg-imcompressibility"]' \
     actor_rollout_ref.model.path=stabilityai/stable-diffusion-3.5-medium \
     actor_rollout_ref.model.enable_gradient_checkpointing=False \
     actor_rollout_ref.model.lora_rank=32 \
@@ -28,7 +30,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.dtype=bf16 \
     actor_rollout_ref.rollout.guidance_scale=4.5 \
     actor_rollout_ref.rollout.noise_level=0.7 \
-    reward_model.reward_manager=diffusion \
+    reward_model.reward_manager=diffusion-batch \
     trainer.logger='["console", "wandb"]' \
     trainer.project_name='flow_grpo' \
     trainer.experiment_name='sd35_m_ocr' \

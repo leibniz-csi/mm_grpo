@@ -13,8 +13,6 @@
 # limitations under the License.
 # ============================================================================
 
-from verl.utils.import_utils import deprecated
-
 
 def default_compute_score(
     data_source,
@@ -41,55 +39,43 @@ def default_compute_score(
     Raises:
         NotImplementedError: If the reward function is not implemented for the given data source.
     """
-    if data_source in [
-        "ocr",
-    ]:
-        from . import ocr
+    reward_fn = extra_info.get("reward_fn", []) if extra_info else []
+    if len(reward_fn) > 0:
+        scorers_weight = [1 / len(reward_fn)] * len(
+            reward_fn
+        )  # TODO: TBD support custom weights
+        scorers = dict(zip(reward_fn, scorers_weight))
+        from . import multi
 
-        score_name = "paddle_ocr"
-        if extra_info and "ocr_scorer" in extra_info:
-            score_name = extra_info["ocr_scorer"]
-        res = ocr.compute_score(solution_str, ground_truth, score_name)
-
+        res = multi.compute_score(solution_str, ground_truth, scorers)
     else:
-        # TODO: determine if use a default scorer?
-        from . import jpeg_imcompressibility
+        print(
+            "reward_fn is not specified, use default reward function for each data_source."
+        )
+        if data_source in [
+            "ocr",
+        ]:
+            from . import ocr
 
-        res = jpeg_imcompressibility.compute_score(solution_str, ground_truth)
-        # raise NotImplementedError(
-        #     f"Reward function is not implemented for {data_source=}"
-        # )
+            res = ocr.compute_score(solution_str, ground_truth)
+
+        else:
+            print(
+                f"Unrecognized {data_source=}, use jpeg-imcompressibility as default."
+            )
+            from . import jpeg_imcompressibility
+
+            res = jpeg_imcompressibility.compute_score(solution_str, ground_truth)
 
     if isinstance(res, dict):
         return res
     elif isinstance(res, int | float | bool):
         return float(res)
-    else:
-        return float(res[0])
-
-
-@deprecated("verl.utils.reward_score.default_compute_score")
-def _default_compute_score(
-    data_source,
-    solution_str,
-    ground_truth,
-    extra_info=None,
-    sandbox_fusion_url=None,
-    concurrent_semaphore=None,
-    memory_limit_mb=None,
-):
-    """
-    Legacy function API to be deprecated. Please use `default_compute_score` instead.
-    """
-    return default_compute_score(
-        data_source,
-        solution_str,
-        ground_truth,
-        extra_info,
-        sandbox_fusion_url,
-        concurrent_semaphore,
-        memory_limit_mb,
-    )
+    elif isinstance(res, list):
+        if len(res) == 1:
+            return float(res[0])
+        else:
+            return [float(r) for r in res]
 
 
 __all__ = ["default_compute_score"]

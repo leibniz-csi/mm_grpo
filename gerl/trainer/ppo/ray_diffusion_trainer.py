@@ -32,7 +32,6 @@ from verl.single_controller.ray import RayClassWithInitArgs, RayWorkerGroup
 from verl.single_controller.ray.base import create_colocated_worker_cls
 from verl.trainer.ppo.metric_utils import process_validation_metrics
 from verl.trainer.ppo.ray_trainer import ResourcePoolManager
-from verl.trainer.ppo.reward import compute_reward, compute_reward_async
 from verl.trainer.ppo.utils import (
     Role,
     WorkerType,
@@ -59,6 +58,7 @@ from .metric_utils import (
     compute_diffusion_throughout_metrics,
     compute_diffusion_timing_metrics,
 )
+from .reward import compute_reward, compute_reward_async
 
 
 def compute_advantage(
@@ -856,7 +856,8 @@ class RayDiffusionPPOTrainer:
 
                         if self.config.reward_model.launch_reward_fn_async:
                             future_reward = compute_reward_async.remote(
-                                data=batch, config=self.config, tokenizer=self.tokenizer
+                                data=batch,
+                                config=self.config,
                             )
                         else:
                             reward_tensor, reward_extra_infos_dict = compute_reward(

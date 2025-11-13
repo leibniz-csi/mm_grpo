@@ -31,7 +31,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.sde_type="cps" \
     actor_rollout_ref.rollout.sde_window_size=3 \
     actor_rollout_ref.rollout.sde_window_range="[0,5]" \
-    reward_model.reward_manager=diffusion \
+    reward_model.reward_manager=diffusion-batch \
     trainer.logger='["console", "wandb"]' \
     trainer.project_name='flow_grpo' \
     trainer.experiment_name='sd35_m_ocr_fast' \

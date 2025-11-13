@@ -29,6 +29,16 @@ prompt_key: prompt
 # The field used to select the reward function (if using different ones per example).
 reward_fn_key: data_source
 
+# The data source name, default is "ocr"
+data_source: ocr
+
+# The list of reward functions used for the data, options: "paddle-ocr", "jpeg-imcompressibility",
+# support multiple reward functions. TODO: add weights?
+reward_fn: ["jpeg-imcompressibility"]
+
+# reward model type # TODO: seems useless?
+reward_model_style: rule
+
 # Maximum prompt length. All prompts will be left-padded to this length.
 # An error will be reported if the length is too long.
 # oc.select: default val for rollout.prompt_length
