@@ -35,18 +35,13 @@ def _compute_diffusion_response_info(batch: DataProto) -> dict[str, Any]:
     Returns:
         A dictionary containing:
             - prompt_length: Tensor of prompt lengths for each item in the batch
-            - response_length: Tensor of response lengths for each item in the batch
     """
-    response_length = batch.batch["responses"].shape[
-        0
-    ]  # BCHW # TODO: To determine the meaning
     prompt_length = torch.tensor(
         [len(prompt) for prompt in batch.non_tensor_batch["prompt"]]
     )
 
     return dict(
         prompt_length=prompt_length,
-        response_length=response_length,
     )
 
 
@@ -67,7 +62,6 @@ def compute_diffusion_data_metrics(batch: DataProto) -> dict[str, Any]:
             - critic/rewards/mean, max, min: Statistics about sequence rewards
             - critic/advantages/mean, max, min: Statistics about advantages
             - critic/returns/mean, max, min: Statistics about returns
-            - response_length/mean, max, min, clip_ratio: Statistics about response lengths
             - prompt_length/mean, max, min, clip_ratio: Statistics about prompt lengths
             - num_turns/mean, max, min: Statistics about the number of multi-turn conversations
     """
@@ -79,7 +73,6 @@ def compute_diffusion_data_metrics(batch: DataProto) -> dict[str, Any]:
 
     response_info = _compute_diffusion_response_info(batch)
     prompt_length = response_info["prompt_length"].float()
-    # response_length = response_info["response_length"]
 
     score_mean = torch.mean(sequence_score).detach().item()
     score_max = torch.max(sequence_score).detach().item()

@@ -40,12 +40,15 @@ class DiffusionTextPromptDataset(Dataset):
         if self.max_samples > 0 and self.max_samples < len(self.prompts):
             self.prompts = self.prompts[: self.max_samples]
 
+        self.data_source = config.data_source
+        self.reward_model_style = config.reward_model_style
+
     def __len__(self):
         return len(self.prompts)
 
     def __getitem__(self, idx):
         return {
             "prompt": self.prompts[idx],
-            "reward_model": {"style": "rule"},
-            "data_source": "ocr",
+            "reward_model": {"style": self.reward_model_style},
+            "data_source": self.data_source,
         }

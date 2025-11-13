@@ -21,7 +21,6 @@ import inspect
 import multiprocessing
 import os
 import sys
-import warnings
 from functools import partial
 from typing import Any, Optional
 
@@ -170,6 +169,7 @@ def load_reward_manager(
         num_examine=num_examine,
         compute_score=final_compute_score,
         reward_fn_key=config.data.reward_fn_key,
+        reward_fn=config.data.reward_fn,
         **reward_kwargs,
     )
 
@@ -205,14 +205,8 @@ def compute_reward_async(data: DataProto, config=None, tokenizer=None, reward_fn
     This is meant to be run in a separate Ray worker.
     """
     if reward_fn is None:
-        assert config is not None and tokenizer is not None, (
-            "config and tokenizer must not be None when reward_fn is None"
-        )
+        assert config is not None, "config must not be None when reward_fn is None"
 
-        warnings.warn(
-            "using config and tokenizer with compute_reward_async is deprecated",
-            stacklevel=2,
-        )
         reward_fn = load_reward_manager(
             config,
             tokenizer,

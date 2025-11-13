@@ -17,27 +17,17 @@
 # ============================================================================
 
 import io
+from typing import List, Optional, Union
 
 import numpy as np
 import torch
 from PIL import Image
 
-
-def compute_score(images, ground_truth=None) -> float:
-    retval, _ = jpeg_incompressibility()(images, None, None)
-    assert retval.shape[0] == 1
-    retval = retval.tolist()[0]
-    return retval
+from .scorer import Scorer
 
 
 def jpeg_incompressibility():
-    def _fn(images, prompts, metadata):
-        if isinstance(images, torch.Tensor):
-            if images.ndim == 3:
-                images = images.unsqueeze(0)
-            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            images = images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
-        images = [Image.fromarray(image) for image in images]
+    def _fn(images, prompts=None):
         buffers = [io.BytesIO() for _ in images]
         for image, buffer in zip(images, buffers, strict=False):
             image.save(buffer, format="JPEG", quality=95)
@@ -50,8 +40,50 @@ def jpeg_incompressibility():
 def jpeg_compressibility():
     jpeg_fn = jpeg_incompressibility()
 
-    def _fn(images, prompts, metadata):
-        rew, meta = jpeg_fn(images, prompts, metadata)
+    def _fn(images, prompts):
+        rew, meta = jpeg_fn(images, prompts)
         return -rew / 500, meta
 
     return _fn
+
+
+class JpegImcompressibilityScorer(Scorer):
+    def __init__(self) -> None:
+        super().__init__()
+
+    @torch.no_grad()
+    def __call__(
+        self,
+        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
+        prompts: Optional[List[str]] = None,
+    ) -> List[float]:
+        """
+        Calculate jpeg imcompressibility reward
+        :param images: List of input images (PIL or numpy format)
+        :param prompts: unused
+        :return: Reward scores
+        """
+        if isinstance(images, (np.ndarray, torch.Tensor)):
+            if images.ndim == 3:
+                images = images.unsqueeze(0)
+            images = self.array_to_images(images)
+        retval, _ = jpeg_incompressibility()(images, None)
+        retval = retval.tolist()
+        return retval
+
+
+def compute_score(images, prompts=None) -> float:
+    scorer = JpegImcompressibilityScorer()
+    scores = scorer(images, prompts)
+    return scores
+
+
+def test_jpeg_compressibility_scorer():
+    scorer = JpegImcompressibilityScorer()
+    images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg"]
+    pil_images = [Image.open(img) for img in images]
+    print(scorer(images=pil_images))
+
+
+if __name__ == "__main__":
+    test_jpeg_compressibility_scorer()

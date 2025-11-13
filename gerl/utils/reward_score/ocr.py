@@ -15,7 +15,6 @@
 # limitations under the License.
 # ============================================================================
 
-import importlib
 from typing import List, Union
 
 import numpy as np
@@ -27,7 +26,7 @@ from .scorer import Scorer
 
 
 class PaddleOcrScorer(Scorer):
-    def __init__(self, use_gpu: bool = True):
+    def __init__(self, use_gpu: bool = False):
         """
         OCR reward calculator
         :param use_gpu: Whether to use GPU acceleration for PaddleOCR
@@ -102,20 +101,9 @@ class PaddleOcrScorer(Scorer):
 
 def compute_score(images, prompts, score_name="paddle_ocr"):
     """
-    Compute OCR reward score for a batch of images and prompts.
-    It supports reward models named:
-    - "paddle_ocr": PaddleOCR (default)
-    - "qwenvl_ocr_vllm": Qwen2.5-VL as OCR scorer (vllm version)
+    Compute OCR reward score using PaddleOCR for a batch of images and prompts.
     """
-    SCORERS = {
-        "paddle_ocr": ("ocr", "PaddleOcrScorer"),
-        "qwenvl_ocr_vllm": ("vllm", "QwenVLOcrVLLMScorer"),
-    }
-    module, cls = SCORERS[score_name]
-    module = "gerl.utils.reward_score." + module
-    module = importlib.import_module(module)
-    scorer = getattr(module, cls)()
-
+    scorer = PaddleOcrScorer()
     scores = scorer(images, prompts)
 
     return scores
