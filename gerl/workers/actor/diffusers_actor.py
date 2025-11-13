@@ -104,7 +104,6 @@ class DiffusersPPOActor(BasePPOActor):
                     return_dict=False,
                 )[0]
 
-            # TODO (Mike): double check if the computation is correct
             prev_sample, log_prob, prev_sample_mean, std_dev_t = (
                 self.scheduler.sample_previous_step(
                     sample=latents[:, step],

@@ -81,14 +81,17 @@ from verl.utils.profiler.performance import (
 )
 from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.ray_utils import get_event_loop
-from verl.workers.config import FSDPEngineConfig
 from verl.workers.config.optimizer import build_optimizer
 from verl.workers.fsdp_workers import create_device_mesh, get_sharding_strategy
 
 from ..protocol import DataProto
 from ..utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from ..utils.lora import select_lora_modules
-from .config import DiffusersModelConfig, DiffusionRolloutConfig
+from .config import (
+    DiffusersModelConfig,
+    DiffusionRolloutConfig,
+    FSDPEngineConfig,
+)
 from .rollout import get_rollout_class
 
 logger = logging.getLogger(__file__)

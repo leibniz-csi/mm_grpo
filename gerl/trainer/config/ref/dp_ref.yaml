@@ -14,13 +14,3 @@ defaults:
 # Potential use case involves on policy distillation where we calculate KL divergence between student actor
 # and teacher ref
 model: null
-
-# sequence parallel size
-# same as actor_rollout_ref.actor.ulysses_sequence_parallel_size if it exists, otherwise 1
-ulysses_sequence_parallel_size: ${oc.select:actor_rollout_ref.actor.ulysses_sequence_parallel_size,1}
-
-# calculate entropy with chunking to reduce memory peak
-entropy_from_logits_with_chunking: False
-
-# recompute entropy
-entropy_checkpointing: False

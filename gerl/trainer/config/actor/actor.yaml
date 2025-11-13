@@ -42,13 +42,13 @@ ppo_epochs: 1
 shuffle: false
 
 # Guidance scale during training
-guidance_scale: ${rollout.guidance_scale}
+guidance_scale: ${actor_rollout_ref.rollout.guidance_scale}
 
 # Noise level during training
-noise_level: ${rollout.noise_level}
+noise_level: ${actor_rollout_ref.rollout.noise_level}
 
 # SDE type during training
-sde_type: ${rollout.sde_type}
+sde_type: ${actor_rollout_ref.rollout.sde_type}
 
 # checkpoint configs
 checkpoint:

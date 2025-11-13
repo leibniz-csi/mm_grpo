@@ -98,7 +98,7 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         skip_layer_guidance_start: float = 0.01,
         mu: Optional[float] = None,
         noise_level: float = 0.7,
-        sde_window_size: int = 0,
+        sde_window_size: Optional[int] = None,
         sde_window_range: tuple[int, int] = (0, 5),
         sde_type: Literal["sde", "cps"] = "sde",
     ):
@@ -225,7 +225,7 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         )
         self._num_timesteps = len(timesteps)
 
-        if sde_window_size > 0:
+        if sde_window_size is not None:
             start = random.randint(
                 sde_window_range[0], sde_window_range[1] - sde_window_size
             )
