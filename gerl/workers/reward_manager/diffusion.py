@@ -187,7 +187,6 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
             else:
                 return data.batch["rm_scores"]
 
-        reward_tensor = torch.zeros(len(data.batch["responses"]), dtype=torch.float32)
         reward_extra_info = defaultdict(list)
 
         # get batch reward scores
@@ -206,13 +205,13 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
         extras = data.non_tensor_batch.get("extra_info", [{} for _ in range(len(data))])
         for i in range(len(data)):
             extras[i]["rollout_reward_scores"] = rollout_reward_scores[i]
-        extras["reward_fn"] = self.reward_fn
+            extras[i]["reward_fn"] = self.reward_fn
 
         scores = self.compute_score(
             data_source=data_sources[0],
             solution_str=response_images,
             ground_truth=ground_truths,
-            extra_info=extras,
+            extra_info=extras[0],
         )
         if isinstance(scores, dict):
             rewards = scores["score"]
@@ -220,7 +219,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
                 reward_extra_info[key] = value
         else:  # list
             rewards = scores
-        reward_tensor[:] = rewards
+        reward_tensor = torch.tensor(rewards, dtype=torch.float32)
 
         # print information
         already_printed: dict[str, Any] = {}
@@ -238,7 +237,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
                 already_printed[data_source] = already_printed.get(data_source, 0) + 1
 
         data.batch["acc"] = torch.tensor(
-            rewards, dtype=torch.float32, device=prompts.device
+            rewards, dtype=torch.float32, device=response_images.device
         )
         if return_dict:
             return {

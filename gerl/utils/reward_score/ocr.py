@@ -110,7 +110,7 @@ def compute_score(images, prompts, score_name="paddle_ocr"):
 
 
 def test_paddle_ocr_scorer():
-    example_image_path = "media_images_eval_images_499_ef42de47b8ec98892954.jpg"
+    example_image_path = "assets/generated_nyc.jpg"
     example_image = Image.open(example_image_path)
     example_prompt = (
         'New York Skyline with "Hello World" written with fireworks on the sky'
