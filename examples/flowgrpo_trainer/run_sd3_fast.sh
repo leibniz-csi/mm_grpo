@@ -14,7 +14,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.actor.optim.weight_decay=0.001 \
     actor_rollout_ref.actor.ppo_mini_batch_size=8 \
     actor_rollout_ref.actor.use_kl_loss=True \
-    actor_rollout_ref.actor.kl_loss_coef=0.04 \
+    actor_rollout_ref.actor.kl_loss_coef=0 \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
     actor_rollout_ref.actor.fsdp_config.model_dtype=bf16 \
@@ -26,12 +26,15 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.rollout_batch_size=8 \
     actor_rollout_ref.rollout.dtype=bf16 \
-    actor_rollout_ref.rollout.guidance_scale=4.5 \
-    actor_rollout_ref.rollout.noise_level=0.7 \
+    actor_rollout_ref.rollout.guidance_scale=1.0 \
+    actor_rollout_ref.rollout.noise_level=0.8 \
+    actor_rollout_ref.rollout.sde_typ="cps" \
+    actor_rollout_ref.rollout.sde_window_size=3 \
+    actor_rollout_ref.rollout.sde_window_range="[0,5]" \
     reward_model.reward_manager=diffusion \
     trainer.logger='["console", "wandb"]' \
     trainer.project_name='flow_grpo' \
-    trainer.experiment_name='sd35_m_ocr' \
+    trainer.experiment_name='sd35_m_ocr_fast' \
     trainer.n_gpus_per_node=1 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \

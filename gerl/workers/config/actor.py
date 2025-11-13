@@ -14,7 +14,7 @@
 # ============================================================================
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Literal, Optional
 
 from omegaconf import MISSING
 from verl.base_config import BaseConfig
@@ -82,7 +82,7 @@ class DiffusionActorConfig(BaseConfig):
     model_config: HFModelConfig = field(default_factory=BaseConfig)
     guidance_scale: float = 4.5
     noise_level: float = 0.7
-    sde_type: str = "sde"
+    sde_type: Literal["sde", "cps"] = "sde"
 
     def __post_init__(self):
         """Validate actor configuration parameters."""

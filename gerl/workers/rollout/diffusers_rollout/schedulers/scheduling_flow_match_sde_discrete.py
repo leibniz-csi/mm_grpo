@@ -19,7 +19,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional
+from typing import Literal, Optional
 
 import torch
 from diffusers import FlowMatchEulerDiscreteScheduler
@@ -59,7 +59,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         return_dict: bool = True,
         noise_level: float = 0.7,
         prev_sample: Optional[torch.FloatTensor] = None,
-        sde_type: Optional[str] = "sde",
+        sde_type: Literal["sde", "cps"] = "sde",
     ) -> FlowMatchSDEDiscreteSchedulerOutput | tuple:
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
@@ -147,7 +147,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         per_token_timesteps: Optional[torch.Tensor] = None,
         noise_level: float = 0.7,
         prev_sample: Optional[torch.Tensor] = None,
-        sde_type: Optional[str] = "sde",
+        sde_type: Literal["cps", "sde"] = "sde",
     ):
         if per_token_timesteps is not None:
             raise NotImplementedError(

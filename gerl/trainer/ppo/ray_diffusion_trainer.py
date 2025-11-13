@@ -620,16 +620,6 @@ class RayDiffusionPPOTrainer:
         print(f"local_global_step_folder: {local_global_step_folder}")
         actor_local_path = os.path.join(local_global_step_folder, "actor")
 
-        actor_remote_path = (
-            None
-            if self.config.trainer.default_hdfs_dir is None
-            else os.path.join(
-                self.config.trainer.default_hdfs_dir,
-                f"global_step_{self.global_steps}",
-                "actor",
-            )
-        )
-
         remove_previous_ckpt_in_save = self.config.trainer.get(
             "remove_previous_ckpt_in_save", False
         )
@@ -646,7 +636,6 @@ class RayDiffusionPPOTrainer:
 
         self.actor_rollout_wg.save_checkpoint(
             actor_local_path,
-            actor_remote_path,
             self.global_steps,
             max_ckpt_to_keep=max_actor_ckpt_to_keep,
         )

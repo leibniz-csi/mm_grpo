@@ -18,7 +18,7 @@
 
 import random
 from dataclasses import dataclass
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Literal, Optional, Sequence
 
 import numpy as np
 import PIL.Image
@@ -100,7 +100,7 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         noise_level: float = 0.7,
         sde_window_size: int = 0,
         sde_window_range: tuple[int, int] = (0, 5),
-        sde_type: Optional[str] = "sde",
+        sde_type: Literal["sde", "cps"] = "sde",
     ):
         """
         Function invoked when calling the pipeline for generation.

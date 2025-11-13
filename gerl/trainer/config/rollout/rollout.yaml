@@ -32,9 +32,15 @@ guidance_scale: 4.5
 # SDE type during rollout
 sde_type: "sde"
 
+# SDE window size
+sde_window_size: null
+
+# SDE window range
+sde_window_range: null
+
 # for diffusers rollout
 # Rollout dtype. Shoudd Align with actor model's FSDP/Megatron type.
-dtype: fp16
+dtype: bf16
 
 # TP size for rollout
 tensor_model_parallel_size: 1

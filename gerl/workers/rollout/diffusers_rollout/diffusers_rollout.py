@@ -106,6 +106,9 @@ class DiffusersRollout(BaseRollout):
                     ),
                     output_type="pt",
                     noise_level=noise_level,
+                    sde_window_size=self.config.sde_window_size,
+                    sde_window_range=self.config.sde_window_range,
+                    sde_type=self.config.sde_type,
                 )
 
             result = TensorDict(

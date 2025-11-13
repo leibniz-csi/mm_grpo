@@ -43,7 +43,6 @@ from verl.single_controller.base.decorator import (
     register,
 )
 from verl.utils.activation_offload import enable_activation_offloading
-from verl.utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from verl.utils.config import omega_conf_to_dataclass
 from verl.utils.device import (
     get_device_id,
@@ -87,6 +86,7 @@ from verl.workers.config.optimizer import build_optimizer
 from verl.workers.fsdp_workers import create_device_mesh, get_sharding_strategy
 
 from ..protocol import DataProto
+from ..utils.checkpoint.fsdp_checkpoint_manager import FSDPCheckpointManager
 from ..utils.lora import select_lora_modules
 from .config import DiffusersModelConfig, DiffusionRolloutConfig
 from .rollout import get_rollout_class
@@ -805,9 +805,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def save_checkpoint(
-        self, local_path, hdfs_path=None, global_step=0, max_ckpt_to_keep=None
-    ):
+    def save_checkpoint(self, local_path, global_step=0, max_ckpt_to_keep=None):
         from verl.utils.logger import log_with_rank
 
         # only support save and load ckpt for actor
@@ -818,7 +816,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         self.checkpoint_manager.save_checkpoint(
             local_path=local_path,
-            hdfs_path=hdfs_path,
             global_step=global_step,
             max_ckpt_to_keep=max_ckpt_to_keep,
         )
@@ -833,7 +830,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             if torch.distributed.get_rank() == 0:
                 os.makedirs(lora_save_path, exist_ok=True)
                 peft_config = asdict(peft_model.peft_config.get("default", {}))
-                peft_config["task_type"] = peft_config["task_type"].value
                 peft_config["peft_type"] = peft_config["peft_type"].value
                 peft_config["target_modules"] = list(peft_config["target_modules"])
             try:
@@ -873,7 +869,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
-    def load_checkpoint(self, local_path, hdfs_path=None, del_local_after_load=False):
+    def load_checkpoint(self, local_path, del_local_after_load=False):
         assert self._is_actor or (not self._is_actor and self._is_rollout), (
             f"Checkpoint loading is only supported for Actor or standalone Rollout Workers, but got "
             f"{self._is_actor} and {self._is_rollout}"
@@ -892,7 +888,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         self.checkpoint_manager.load_checkpoint(
             local_path=local_path,
-            hdfs_path=hdfs_path,
             del_local_after_load=del_local_after_load,
         )
 
