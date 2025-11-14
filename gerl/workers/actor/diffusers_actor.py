@@ -19,7 +19,7 @@ Single Process Actor
 
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 import torch
 from diffusers import DiffusionPipeline
@@ -34,7 +34,7 @@ from verl.workers.actor import BasePPOActor
 
 from ...protocol import DataProto
 from ...trainer.ppo.core_algos import get_policy_loss_fn, kl_penalty
-from ..config import DiffusionActorConfig
+from ..config import DiffusionFSDPActorConfig
 
 __all__ = ["DiffusersPPOActor"]
 
@@ -43,9 +43,19 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
 class DiffusersPPOActor(BasePPOActor):
+    """Diffusers PPO Actor
+
+    Args:
+        config (DiffusionActorConfig): Configuration for the actor
+        actor_module (nn.Module): The actor module
+        pipeline (DiffusionPipeline): The diffusion pipeline
+        actor_optimizer (Optional[torch.optim.Optimizer], optional): The optimizer for the actor.
+            When None, it is Reference Policy. Defaults to None.
+    """
+
     def __init__(
         self,
-        config: DiffusionActorConfig,
+        config: DiffusionFSDPActorConfig,
         actor_module: nn.Module,
         pipeline: DiffusionPipeline,
         actor_optimizer: Optional[torch.optim.Optimizer] = None,
@@ -54,7 +64,6 @@ class DiffusersPPOActor(BasePPOActor):
         super().__init__(config)
         self.actor_module = actor_module
         self.actor_optimizer = actor_optimizer
-        self.role = "Ref" if actor_optimizer is None else "Actor"
         self.scheduler = pipeline.scheduler
         self.device_name = get_device_name()
         self.dtype = (
@@ -65,7 +74,7 @@ class DiffusersPPOActor(BasePPOActor):
 
     def _forward_micro_batch(
         self, micro_batch: dict[str, torch.Tensor], step: int
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Returns:
             log_probs: # (bs, )
@@ -104,7 +113,7 @@ class DiffusersPPOActor(BasePPOActor):
                     return_dict=False,
                 )[0]
 
-            prev_sample, log_prob, prev_sample_mean, std_dev_t = (
+            _, log_prob, prev_sample_mean, std_dev_t = (
                 self.scheduler.sample_previous_step(
                     sample=latents[:, step],
                     model_output=noise_pred.float(),
@@ -115,7 +124,7 @@ class DiffusersPPOActor(BasePPOActor):
                 )
             )
 
-        return prev_sample, log_prob, prev_sample_mean, std_dev_t
+        return log_prob, prev_sample_mean, std_dev_t
 
     def _optimizer_step(self):
         assert self.config.grad_clip is not None
@@ -171,11 +180,7 @@ class DiffusersPPOActor(BasePPOActor):
             "negative_pooled_prompt_embeds",
         ]
 
-        non_tensor_select_keys: list = []
-
-        data = data.select(
-            batch_keys=select_keys, non_tensor_batch_keys=non_tensor_select_keys
-        )
+        data = data.select(batch_keys=select_keys)
         # shuffle samples along batch dimension
         data.reorder(torch.randperm(len(data)))
 
@@ -183,78 +188,92 @@ class DiffusersPPOActor(BasePPOActor):
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
         mini_batches = data.split(self.config.ppo_mini_batch_size)
 
-        metrics: dict = {}
-        train_step = 0
-        self.actor_optimizer.zero_grad()
-
-        # we always accumulate gradients across timesteps; we want config.train.gradient_accumulation_steps to be the
-        # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
-        # the total number of optimizer steps to accumulate across.
-        gradient_accumulation_steps = (
-            len(mini_batches) * data.meta_info["cached_steps"] // 2
-        )
-        loss_scale_factor = 1 / gradient_accumulation_steps
-
+        metrics: dict[str, Any] = {}
         for _ in range(self.config.ppo_epochs):
-            for micro_batch in mini_batches:
-                for step in range(micro_batch.meta_info["cached_steps"]):
+            for batch_idx, mini_batch in enumerate(mini_batches):
+                self.gradient_accumulation = (
+                    self.config.ppo_mini_batch_size
+                    * data.meta_info["cached_steps"]
+                    // self.config.ppo_micro_batch_size_per_gpu
+                )
+                micro_batches = mini_batch.split(
+                    self.config.ppo_micro_batch_size_per_gpu
+                )
+
+                self.actor_optimizer.zero_grad()
+
+                for micro_batch in micro_batches:
                     micro_batch = micro_batch.to(get_device_id())
-                    micro_batch_metrics = {}
-                    model_inputs = {**micro_batch.batch, **micro_batch.non_tensor_batch}
-                    old_log_prob = model_inputs["old_log_probs"]
-                    advantages = model_inputs["advantages"]
-
-                    _, log_prob, prev_sample_mean, std_dev_t = (
-                        self._forward_micro_batch(model_inputs, step=step)
-                    )
-
-                    if self.config.use_kl_loss:
-                        with torch.no_grad():
-                            # TODO (Mike): handle non-lora case
-                            with self.actor_module.disable_adapter():
-                                _, _, prev_sample_mean_ref, _ = (
-                                    self._forward_micro_batch(model_inputs, step=step)
-                                )
-
-                    policy_loss_fn = get_policy_loss_fn(
-                        self.config.policy_loss.loss_mode
-                    )
-
-                    # Compute policy loss (all functions return 4 values)
-                    policy_loss = policy_loss_fn(
-                        old_log_prob=old_log_prob[:, step],
-                        log_prob=log_prob,
-                        advantages=advantages,
-                        config=self.config,
-                    )
-
-                    if self.config.use_kl_loss:
-                        kld = kl_penalty(
-                            prev_sample_mean, prev_sample_mean_ref, std_dev_t
-                        )
-                        kl_loss = kld.mean()
-
-                        policy_loss = policy_loss + kl_loss * self.config.kl_loss_coef
-                        micro_batch_metrics["actor/kl_loss"] = (
-                            kl_loss.detach().item() * loss_scale_factor
-                        )
-                        micro_batch_metrics["actor/kl_coef"] = self.config.kl_loss_coef
-
-                    loss = policy_loss * loss_scale_factor
-                    loss.backward()
-
-                    micro_batch_metrics.update(
-                        {"actor/pg_loss": policy_loss.detach().item()}
-                    )
-                    append_to_dict(metrics, micro_batch_metrics)
-                    train_step += 1
-
-                    if train_step % gradient_accumulation_steps == 0:
-                        grad_norm = self._optimizer_step()
-                        self.actor_optimizer.zero_grad()
-                        mini_batch_metrics = {
-                            "actor/grad_norm": grad_norm.detach().item()
+                    for step in range(micro_batch.meta_info["cached_steps"]):
+                        micro_batch_metrics = {}
+                        model_inputs = {
+                            **micro_batch.batch,
+                            **micro_batch.non_tensor_batch,
                         }
-                        append_to_dict(metrics, mini_batch_metrics)
+                        old_log_prob = model_inputs["old_log_probs"]
+                        advantages = model_inputs["advantages"]
+
+                        loss_scale_factor = 1 / self.gradient_accumulation
+
+                        log_prob, prev_sample_mean, std_dev_t = (
+                            self._forward_micro_batch(model_inputs, step=step)
+                        )
+
+                        if self.config.use_kl_loss:
+                            with torch.no_grad():
+                                if self.config.model_config.lora_rank > 0:
+                                    with self.actor_module.disable_adapter():
+                                        _, prev_sample_mean_ref, _ = (
+                                            self._forward_micro_batch(
+                                                model_inputs, step=step
+                                            )
+                                        )
+                                else:
+                                    # TODO (Mike): support non-lora case
+                                    raise NotImplementedError()
+
+                        policy_loss_fn = get_policy_loss_fn(
+                            self.config.policy_loss.loss_mode
+                        )
+
+                        # Compute policy loss (any function is expected to return 1 values)
+                        pg_loss = policy_loss_fn(
+                            old_log_prob=old_log_prob[:, step],
+                            log_prob=log_prob,
+                            advantages=advantages,
+                            config=self.config,
+                        )
+
+                        policy_loss = pg_loss
+
+                        if self.config.use_kl_loss:
+                            # compute kl loss
+                            kld = kl_penalty(
+                                prev_sample_mean, prev_sample_mean_ref, std_dev_t
+                            )
+                            kl_loss = kld.mean()
+
+                            policy_loss = (
+                                policy_loss + kl_loss * self.config.kl_loss_coef
+                            )
+                            micro_batch_metrics["actor/kl_loss"] = (
+                                kl_loss.detach().item() * loss_scale_factor
+                            )
+                            micro_batch_metrics["actor/kl_coef"] = (
+                                self.config.kl_loss_coef
+                            )
+
+                        loss = policy_loss * loss_scale_factor
+                        loss.backward()
+
+                        micro_batch_metrics["actor/pg_loss"] = (
+                            pg_loss.detach().item() * loss_scale_factor
+                        )
+                        append_to_dict(metrics, micro_batch_metrics)
+
+                grad_norm = self._optimizer_step()
+                mini_batch_metrics = {"actor/grad_norm": grad_norm.detach().item()}
+                append_to_dict(metrics, mini_batch_metrics)
+        self.actor_optimizer.zero_grad()
 
         return metrics
