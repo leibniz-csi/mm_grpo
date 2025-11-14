@@ -6,13 +6,16 @@ python3 -m gerl.trainer.main_flowgrpo \
     data.val_max_samples=16 \
     data.max_prompt_length=128 \
     data.filter_overlong_prompts=False \
+    data.data_source=ocr \
+    data.reward_fn='["jpeg-imcompressibility"]' \
     actor_rollout_ref.model.path=stabilityai/stable-diffusion-3.5-medium \
     actor_rollout_ref.model.enable_gradient_checkpointing=False \
     actor_rollout_ref.model.lora_rank=32 \
     actor_rollout_ref.model.lora_alpha=64 \
     actor_rollout_ref.actor.optim.lr=3e-4 \
     actor_rollout_ref.actor.optim.weight_decay=0.001 \
-    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=32 \
+    actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0 \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \

@@ -45,9 +45,9 @@ from verl.utils.checkpoint.checkpoint_manager import (
 from verl.utils.debug import marked_timer
 from verl.utils.metric import reduce_metrics
 from verl.utils.rollout_skip import RolloutSkip
-from verl.utils.tracking import ValidationGenerationsLogger
 
 from ...protocol import DataProto
+from ...utils.tracking import ValidationGenerationsLogger
 from ..config.algorithm import AlgoConfig
 from .core_algos import (
     AdvantageEstimator,
@@ -229,7 +229,13 @@ class RayDiffusionPPOTrainer:
             )
 
     def _dump_generations(
-        self, inputs, outputs, gts, scores, reward_extra_infos_dict, dump_path
+        self,
+        inputs: list[str],
+        outputs: torch.FloatTensor,
+        gts: list[Optional[str]],
+        scores: list[float],
+        reward_extra_infos_dict: dict[str, list],
+        dump_path: str,
     ):
         """Dump rollout/validation samples as JSONL."""
         os.makedirs(dump_path, exist_ok=True)
@@ -239,7 +245,7 @@ class RayDiffusionPPOTrainer:
 
         output_paths = []
         images_pil = outputs.cpu().float().permute(0, 2, 3, 1).numpy()
-        images_pil = (images_pil * 255).round().astype("uint8")
+        images_pil = (images_pil * 255).round().clip(0, 255).astype("uint8")
         for i, image in enumerate(images_pil):
             image_path = os.path.join(visual_folder, f"{i}.jpg")
             Image.fromarray(image).save(image_path)
@@ -248,7 +254,7 @@ class RayDiffusionPPOTrainer:
         filename = os.path.join(dump_path, f"{self.global_steps}.jsonl")
 
         n = len(inputs)
-        base_data = {
+        base_data: dict[str, list] = {
             "input": inputs,
             "output": output_paths,
             "gts": gts,
@@ -301,7 +307,7 @@ class RayDiffusionPPOTrainer:
             )
 
     def _maybe_log_val_generations(self, inputs, outputs, scores):
-        """Log a table of validation samples to the configured logger (wandb or swanlab)"""
+        """Log a table of validation samples to the configured logger (wandb)"""
 
         generations_to_log = self.config.trainer.log_val_generations
 
@@ -373,7 +379,7 @@ class RayDiffusionPPOTrainer:
             )
 
             # Store original inputs
-            sample_inputs.extend(test_batch.non_tensor_batch["uid"])
+            sample_inputs.extend(test_batch.non_tensor_batch["prompt"])
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
 
             ground_truths = [

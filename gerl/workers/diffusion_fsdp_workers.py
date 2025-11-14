@@ -101,6 +101,11 @@ device_name = get_device_name()
 
 
 class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
+    """
+    This worker can be instantiated as a standalone actor or a standalone rollout or a standalone reference policy
+    or a hybrid engine based on the config.rollout
+    """
+
     def __init__(self, config: DictConfig, role: str, **kwargs):
         Worker.__init__(self)
 
@@ -224,7 +229,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         enable_gradient_checkpointing=False,
         role="actor",
         enable_activation_offload=False,
-        **kwargs,
     ):
         from diffusers import DiffusionPipeline, ModelMixin
         from torch.distributed.fsdp import CPUOffload, MixedPrecision
@@ -274,15 +278,11 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             pipeline.text_encoder_3.requires_grad_(False)
             pipeline.transformer.requires_grad_(not self._is_lora)
 
-            # disable safety checker
-            pipeline.safety_checker = None
-
             # Move vae and text_encoder to device and cast to inference_dtype
-            pipeline.vae.to(device, dtype=torch.float32)
+            pipeline.vae.to(device, dtype=torch_dtype)
             pipeline.text_encoder.to(device, dtype=torch_dtype)
             pipeline.text_encoder_2.to(device, dtype=torch_dtype)
             pipeline.text_encoder_3.to(device, dtype=torch_dtype)
-            pipeline.transformer.to(device)
 
             actor_module: ModelMixin = pipeline.transformer
 
@@ -371,7 +371,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         auto_wrap_policy = get_fsdp_wrap_policy(
             module=actor_module,
             config=fsdp_config.get("wrap_policy", None),
-            is_lora=self.config.model.get("lora_rank", 0) > 0,
+            is_lora=self._is_lora,
         )
 
         if self.rank == 0:
@@ -395,7 +395,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 mixed_precision=mixed_precision,
                 sync_module_states=True,
                 device_mesh=self.device_mesh,
-                use_orig_params=fsdp_config.get("use_orig_params", False),
+                use_orig_params=self.use_orig_params,
                 forward_prefetch=fsdp_config.get("forward_prefetch", False),
             )
         elif fsdp_strategy == "fsdp2":
@@ -679,8 +679,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             )
 
         if self._is_actor:
-            # TODO: support flopscounter
-            # self.flops_counter = FlopsCounter(self.actor_model_config)
             self.checkpoint_manager = FSDPCheckpointManager(
                 model=self.actor_module_fsdp,
                 optimizer=self.actor.actor_optimizer,
@@ -736,12 +734,12 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
 
     @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"))
     @DistProfiler.annotate(color="red", role="rollout_generate")
-    def generate_sequences(self, prompts):
+    def generate_sequences(self, prompts: DataProto):
         # Support all hardwares
         assert self._is_rollout
         prompts = prompts.to(get_device_id())
 
-        timing_generate = {}
+        timing_generate: dict[str, float] = {}
         if self._is_actor:  # For rollout only, we do not switch context.
             loop = get_event_loop()
             loop.run_until_complete(self.rollout_mode())

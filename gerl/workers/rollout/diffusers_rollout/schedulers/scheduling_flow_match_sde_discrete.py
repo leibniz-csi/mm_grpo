@@ -197,7 +197,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
                 -((prev_sample.detach() - prev_sample_mean) ** 2)
                 / (2 * ((std_dev_t * torch.sqrt(-1 * dt)) ** 2))
                 - torch.log(std_dev_t * torch.sqrt(-1 * dt))
-                - torch.log(torch.sqrt(2 * torch.as_tensor(math.pi)))
+                - torch.log(torch.sqrt(2 * math.pi))
             )
 
         elif sde_type == "cps":

@@ -12,7 +12,10 @@ _target_: gerl.workers.config.DiffusionActorConfig
 strategy: ???
 
 # Split each sample into sub-batches of this size for PPO
-ppo_mini_batch_size: 8
+ppo_mini_batch_size: 32
+
+# Split each mini-batch into micro-batches of this size per GPU for PPO
+ppo_micro_batch_size_per_gpu: 8
 
 # PPO clip ratio
 clip_ratio: 0.00001

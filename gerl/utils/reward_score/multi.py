@@ -14,7 +14,7 @@
 # ============================================================================
 
 import importlib
-from typing import Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import numpy as np
 import torch
@@ -37,7 +37,7 @@ AVAILABLE_SCORERS = {
 
 class MultiScorer(Scorer):
     def __init__(self, scorers: Dict[str, float]) -> None:
-        self.score_fn = dict()
+        self.score_fn: dict[str, Callable] = dict()
         self.scorers = scorers
         self.init_scorer_cls()
 
@@ -61,7 +61,7 @@ class MultiScorer(Scorer):
         :return: Reward scores, including individual scorer results and the total score
         """
         score_details = dict()
-        total_scores = list()
+        total_scores: list[float] = list()
         for score_name, weight in self.scorers.items():
             scores = self.score_fn[score_name](images, prompts=prompts)
             score_details[score_name] = scores
