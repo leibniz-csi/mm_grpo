@@ -67,7 +67,7 @@ class DiffusionActorConfig(BaseConfig):
     }
 
     strategy: str = MISSING
-    ppo_mini_batch_size: int = 32
+    ppo_mini_batch_size: int = 4
     ppo_micro_batch_size_per_gpu: int = 8
     clip_ratio: float = 1e-5
     clip_max: float = 5.0

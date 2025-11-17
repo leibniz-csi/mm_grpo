@@ -220,6 +220,32 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 "param_offload", False
             )
 
+        # normalize config
+        if self._is_actor:
+            self.config.actor.ppo_mini_batch_size *= self.config.rollout.n
+            self.config.actor.ppo_mini_batch_size //= self.device_mesh.size()
+            assert self.config.actor.ppo_mini_batch_size > 0, (
+                f"ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be larger than 0 after "
+                f"normalization"
+            )
+
+            assert (
+                self.config.actor.ppo_mini_batch_size
+                % self.config.actor.ppo_micro_batch_size_per_gpu
+                == 0
+            ), (
+                f"normalized ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be divisible by "
+                f"ppo_micro_batch_size_per_gpu {self.config.actor.ppo_micro_batch_size_per_gpu}"
+            )
+            assert (
+                self.config.actor.ppo_mini_batch_size
+                // self.config.actor.ppo_micro_batch_size_per_gpu
+                > 0
+            ), (
+                f"normalized ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be larger than "
+                f"ppo_micro_batch_size_per_gpu {self.config.actor.ppo_micro_batch_size_per_gpu}"
+            )
+
     def _build_model_optimizer(
         self,
         model_path,
