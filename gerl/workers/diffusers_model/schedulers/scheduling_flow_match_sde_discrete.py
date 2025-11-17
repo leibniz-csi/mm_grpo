@@ -1,8 +1,5 @@
 # Copyright 2025 Huawei Technologies Co., Ltd
 #
-# Modified from https://github.com/yifan123/flow_grpo/blob/main/flow_grpo/diffusers_patch/sd3_sde_with_logprob.py
-# Copyright 2024 Bytedance Ltd. and/or its affiliates
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -64,6 +61,8 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         """
         Predict the sample from the previous timestep by reversing the SDE. This function propagates the diffusion
         process from the learned model outputs (most often the predicted noise).
+
+        Modified from https://github.com/yifan123/flow_grpo/blob/main/flow_grpo/diffusers_patch/sd3_sde_with_logprob.py
 
         Args:
             model_output (`torch.FloatTensor`):

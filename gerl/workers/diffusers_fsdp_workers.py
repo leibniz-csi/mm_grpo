@@ -100,7 +100,7 @@ logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 device_name = get_device_name()
 
 
-class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
+class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
     """
     This worker can be instantiated as a standalone actor or a standalone rollout or a standalone reference policy
     or a hybrid engine based on the config.rollout
@@ -261,10 +261,9 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
 
-        # TODO (Mike): need refactor structure, this is worker module,
-        # we should avoid to import function from specific rollout
-        from .rollout.diffusers_rollout.utils import (
+        from .diffusers_model import (
             inject_SDE_scheduler_into_pipeline,
+            prepare_train_network,
         )
 
         assert role in ["actor", "ref"]
@@ -280,7 +279,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         device = get_device_name()
 
         init_context = get_init_weight_context_manager(
-            use_meta_tensor=True, mesh=self.device_mesh
+            use_meta_tensor=False, mesh=self.device_mesh
         )
 
         with init_context(), warnings.catch_warnings():
@@ -299,18 +298,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                     "Only Transformer-based diffusion model is supported now"
                 )
 
-            # freeze parameters of models to save more memory
-            pipeline.vae.requires_grad_(False)
-            pipeline.text_encoder.requires_grad_(False)
-            pipeline.text_encoder_2.requires_grad_(False)
-            pipeline.text_encoder_3.requires_grad_(False)
-            pipeline.transformer.requires_grad_(not self._is_lora)
-
-            # Move vae and text_encoder to device and cast to inference_dtype
-            pipeline.vae.to(device, dtype=torch_dtype)
-            pipeline.text_encoder.to(device, dtype=torch_dtype)
-            pipeline.text_encoder_2.to(device, dtype=torch_dtype)
-            pipeline.text_encoder_3.to(device, dtype=torch_dtype)
+            prepare_train_network(pipeline, device, torch_dtype, self._is_lora)
 
             actor_module: ModelMixin = pipeline.transformer
 
@@ -960,6 +948,6 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 pass
 
 
-class AsyncDiffusionActorRolloutRefWorker(DiffusionActorRolloutRefWorker):
+class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
     def __init__(self, config: DictConfig, role: str, **kwargs):
         raise NotImplementedError
