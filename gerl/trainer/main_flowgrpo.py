@@ -129,15 +129,15 @@ class TaskRunner:
         from verl.single_controller.ray import RayWorkerGroup
 
         if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
-            from ..workers.diffusion_fsdp_workers import (
-                AsyncDiffusionActorRolloutRefWorker,
-                DiffusionActorRolloutRefWorker,
+            from ..workers.diffusers_fsdp_workers import (
+                AsyncDiffusersActorRolloutRefWorker,
+                DiffusersActorRolloutRefWorker,
             )
 
             actor_rollout_cls = (
-                AsyncDiffusionActorRolloutRefWorker
+                AsyncDiffusersActorRolloutRefWorker
                 if config.actor_rollout_ref.rollout.mode == "async"
-                else DiffusionActorRolloutRefWorker
+                else DiffusersActorRolloutRefWorker
             )
             ray_worker_group_cls = RayWorkerGroup
 
@@ -266,7 +266,7 @@ class TaskRunner:
 
         resource_pool_manager = self.init_resource_pool_mgr(config)
 
-        from verl.utils.dataset.rl_dataset import collate_fn
+        from gerl.utils.dataset.text_dataset import collate_fn
 
         # Create training and validation datasets.
         train_dataset = create_rl_dataset(
@@ -314,7 +314,7 @@ def create_rl_dataset(data_paths, data_config, is_train=True, max_samples: int =
         dataset (Dataset): The dataset.
     """
 
-    from ..utils.dataset.diffusion_dataset import DiffusionTextPromptDataset
+    from ..utils.dataset.text_dataset import TextPromptDataset
 
     # Check if a custom dataset class is specified in the data configuration
     # and if the path to the custom class is provided
@@ -330,8 +330,8 @@ def create_rl_dataset(data_paths, data_config, is_train=True, max_samples: int =
     ):
         raise NotImplementedError
     else:
-        # Use the default RLHFDataset class if no custom class is specified
-        dataset_cls = DiffusionTextPromptDataset
+        # Use the default TextPromptDataset class if no custom class is specified
+        dataset_cls = TextPromptDataset
     print(f"Using dataset class: {dataset_cls.__name__}")
 
     # Instantiate the dataset using the determined dataset class

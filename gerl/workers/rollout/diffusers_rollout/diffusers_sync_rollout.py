@@ -35,14 +35,14 @@ from ...config import DiffusersModelConfig, DiffusionRolloutConfig
 if TYPE_CHECKING:
     from diffusers import DiffusionPipeline
 
-__all__ = ["DiffusersRollout"]
+__all__ = ["DiffusersSyncRollout"]
 
 
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
 
-class DiffusersRollout(BaseRollout):
+class DiffusersSyncRollout(BaseRollout):
     def __init__(
         self,
         config: DiffusionRolloutConfig,
@@ -55,7 +55,7 @@ class DiffusersRollout(BaseRollout):
         self.model_config = model_config
         self.device_mesh = device_mesh
         if rollout_module is None:
-            raise ValueError("rollout_module must be provided for DiffusersRollout")
+            raise ValueError("rollout_module must be provided for DiffusersSyncRollout")
         self.rollout_module = rollout_module
         self.dtype = PrecisionType.to_dtype(config.dtype)
 

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+from .patch import inject_SDE_scheduler_into_pipeline
+from .utils import prepare_train_network
 
-from .pipeline_stable_diffusion_3 import \
-    StableDiffusion3PipelineWithLogProb  # noqa: F401
+__all__ = ["prepare_train_network", "inject_SDE_scheduler_into_pipeline"]

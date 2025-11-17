@@ -1,8 +1,5 @@
 # Copyright 2025 Huawei Technologies Co., Ltd
 #
-# Modified from https://github.com/yifan123/flow_grpo/blob/main/flow_grpo/diffusers_patch/sd3_pipeline_with_logprob_fast.py
-# Copyright 2024 Bytedance Ltd. and/or its affiliates
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -104,6 +101,7 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
     ):
         """
         Function invoked when calling the pipeline for generation.
+        Modified from https://github.com/yifan123/flow_grpo/blob/main/flow_grpo/diffusers_patch/sd3_pipeline_with_logprob_fast.py
         """
         height = height or self.default_sample_size * self.vae_scale_factor
         width = width or self.default_sample_size * self.vae_scale_factor

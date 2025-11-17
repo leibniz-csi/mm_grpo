@@ -35,6 +35,6 @@ class AlgoConfig(BaseConfig):
         global_std (bool): Whether to use global standard deviation for advantage normalization.
     """
 
-    adv_estimator: str = "flwo_grpo"
+    adv_estimator: str = "flow_grpo"
     norm_adv_by_std_in_grpo: bool = True
     global_std: bool = True

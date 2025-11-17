@@ -18,7 +18,10 @@ import importlib
 from verl.workers.rollout.base import BaseRollout
 
 _ROLLOUT_REGISTRY = {
-    ("diffusers", "sync"): "gerl.workers.rollout.diffusers_rollout.DiffusersRollout",
+    (
+        "diffusers",
+        "sync",
+    ): "gerl.workers.rollout.diffusers_rollout.DiffusersSyncRollout",
 }
 
 

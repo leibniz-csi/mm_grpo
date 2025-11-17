@@ -12,16 +12,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
+from typing import TYPE_CHECKING
 
-from diffusers import DiffusionPipeline, StableDiffusion3Pipeline
-
-from .pipelines import StableDiffusion3PipelineWithLogProb
-from .schedulers import FlowMatchSDEDiscreteScheduler
+if TYPE_CHECKING:
+    from diffusers import DiffusionPipeline
 
 
 def inject_SDE_scheduler_into_pipeline(
-    pipeline: DiffusionPipeline, pretrained_model_name_or_path: str
+    pipeline: "DiffusionPipeline", pretrained_model_name_or_path: str
 ):
+    from diffusers import StableDiffusion3Pipeline
+
+    from .pipelines import StableDiffusion3PipelineWithLogProb
+    from .schedulers import FlowMatchSDEDiscreteScheduler
+
     if isinstance(pipeline, StableDiffusion3Pipeline):
         # override __call__ method
         type(pipeline).__call__ = StableDiffusion3PipelineWithLogProb.__call__

@@ -13,6 +13,4 @@
 # limitations under the License.
 # ============================================================================
 
-from .text_dataset import TextPromptDataset
-
-__all__ = ["TextPromptDataset"]
+from .scheduling_flow_match_sde_discrete import FlowMatchSDEDiscreteScheduler

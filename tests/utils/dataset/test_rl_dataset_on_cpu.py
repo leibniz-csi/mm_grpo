@@ -29,9 +29,7 @@ def get_textprompt_data():
 
 
 def test_rl_dataset():
-    from verl.utils.dataset.rl_dataset import collate_fn
-
-    from gerl.utils.dataset.diffusion_dataset import DiffusionTextPromptDataset
+    from gerl.utils.dataset.text_dataset import TextPromptDataset, collate_fn
 
     local_path = get_textprompt_data()
     config = OmegaConf.create(
@@ -41,7 +39,7 @@ def test_rl_dataset():
             "max_prompt_length": 512,
         }
     )
-    dataset = DiffusionTextPromptDataset(data_files=local_path, config=config)
+    dataset = TextPromptDataset(data_files=local_path, config=config)
 
     dataloader = DataLoader(
         dataset=dataset,

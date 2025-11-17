@@ -24,9 +24,6 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.actor.fsdp_config.dtype=bfloat16 \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=1 \
     actor_rollout_ref.actor.policy_loss.loss_mode=flow_grpo \
-    actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
-    actor_rollout_ref.rollout.data_parallel_size=1 \
-    actor_rollout_ref.rollout.context_parallel_size=1 \
     actor_rollout_ref.rollout.name=diffusers \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.dtype=bfloat16 \
