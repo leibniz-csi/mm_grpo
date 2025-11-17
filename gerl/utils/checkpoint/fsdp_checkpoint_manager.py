@@ -59,7 +59,7 @@ class FSDPCheckpointManager(BaseCheckpointManager):
 
     - Saves/loads per-rank sharded model & optimizer states
     - Persists full lr_scheduler and RNG state
-    - Stores HF tokenizer/processor and model/config for unified restore
+    - Stores model/config for unified restore
 
     Args:
         model (FSDP): Wrapped model instance.
@@ -210,7 +210,7 @@ class FSDPCheckpointManager(BaseCheckpointManager):
         Writes:
           - model & optimizer shard files
           - extra state dict (scheduler + RNG)
-          - HF tokenizer/processor and model/config on rank 0
+          - model/config on rank 0
           - optional full HF model under 'huggingface/' if requested
 
         Rotates old checkpoints, keeping at most `max_ckpt_to_keep`.

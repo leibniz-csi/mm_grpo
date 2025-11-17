@@ -220,6 +220,32 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 "param_offload", False
             )
 
+        # normalize config
+        if self._is_actor:
+            self.config.actor.ppo_mini_batch_size *= self.config.rollout.n
+            self.config.actor.ppo_mini_batch_size //= self.device_mesh.size()
+            assert self.config.actor.ppo_mini_batch_size > 0, (
+                f"ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be larger than 0 after "
+                f"normalization"
+            )
+
+            assert (
+                self.config.actor.ppo_mini_batch_size
+                % self.config.actor.ppo_micro_batch_size_per_gpu
+                == 0
+            ), (
+                f"normalized ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be divisible by "
+                f"ppo_micro_batch_size_per_gpu {self.config.actor.ppo_micro_batch_size_per_gpu}"
+            )
+            assert (
+                self.config.actor.ppo_mini_batch_size
+                // self.config.actor.ppo_micro_batch_size_per_gpu
+                > 0
+            ), (
+                f"normalized ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be larger than "
+                f"ppo_micro_batch_size_per_gpu {self.config.actor.ppo_micro_batch_size_per_gpu}"
+            )
+
     def _build_model_optimizer(
         self,
         model_path,
@@ -263,6 +289,8 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             pipeline = DiffusionPipeline.from_pretrained(
                 pretrained_model_name_or_path=local_path
             )
+            pipeline.set_progress_bar_config(disable=True)
+
             inject_SDE_scheduler_into_pipeline(
                 pipeline, pretrained_model_name_or_path=local_path
             )
@@ -343,7 +371,9 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         if self.rank == 0:
             print_model_size(actor_module)
 
-        log_gpu_memory_usage(f"After init {role} from HF AutoModel", logger=logger)
+        log_gpu_memory_usage(
+            f"After init {role} from Diffusers Pipeline", logger=logger
+        )
 
         # We wrap FSDP for rollout as well
         mixed_precision_config = fsdp_config.get("mixed_precision", None)
@@ -358,7 +388,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 mixed_precision_config.get("buffer_dtype", "fp32")
             )
         else:
-            param_dtype = torch.bfloat16
+            param_dtype = PrecisionType.to_dtype(fsdp_config.dtype)
             reduce_dtype = torch.float32
             buffer_dtype = torch.float32
 

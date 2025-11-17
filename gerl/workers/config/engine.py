@@ -38,6 +38,7 @@ class FSDPEngineConfig(BaseConfig):
         model_dtype (str): Model data type used to initialize the transformers model. default "fp32"
         use_orig_params (bool): Whether to use original parameters when initialize FSDP1, default False
         mixed_precision (Optional[dict[str, Any]]): Mixed precision configuration for FSDP, default None
+        dtype (str): Mixed precision training param dtype, default "bfloat16"
     """
 
     wrap_policy: dict[str, Any] = field(default_factory=dict)
@@ -51,6 +52,7 @@ class FSDPEngineConfig(BaseConfig):
     use_orig_params: bool = False
     mixed_precision: Optional[dict[str, Any]] = None
     strategy: str = "fsdp"
+    dtype: str = "bfloat16"  # ["bfloat16", "float16"]
 
     def __post_init__(self):
         assert self.strategy in ["fsdp", "fsdp2"], (

@@ -18,19 +18,22 @@ Rollout with diffusers models.
 
 import logging
 import os
-from typing import Generator, Optional
+from typing import TYPE_CHECKING, Generator, Optional
 
 import numpy as np
 import torch
-from diffusers import DiffusionPipeline
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
 from verl.utils.profiler import GPUMemoryLogger
+from verl.utils.torch_dtypes import PrecisionType
 from verl.workers.rollout.base import BaseRollout
 
 from ....protocol import DataProto
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
+
+if TYPE_CHECKING:
+    from diffusers import DiffusionPipeline
 
 __all__ = ["DiffusersRollout"]
 
@@ -45,7 +48,7 @@ class DiffusersRollout(BaseRollout):
         config: DiffusionRolloutConfig,
         model_config: DiffusersModelConfig,
         device_mesh: DeviceMesh,
-        rollout_module: Optional[DiffusionPipeline] = None,
+        rollout_module: Optional["DiffusionPipeline"] = None,
     ):
         super().__init__(config, model_config, device_mesh)
         self.config = config
@@ -54,11 +57,11 @@ class DiffusersRollout(BaseRollout):
         if rollout_module is None:
             raise ValueError("rollout_module must be provided for DiffusersRollout")
         self.rollout_module = rollout_module
-        self.dtype = torch.float16 if config.dtype == "fp16" else torch.bfloat16
+        self.dtype = PrecisionType.to_dtype(config.dtype)
 
         self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
 
-    @GPUMemoryLogger(role="diffusers rollout spmd", logger=logger)
+    @GPUMemoryLogger(role="diffusers rollout", logger=logger)
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         if self._cached_prompt_embeds is None:
@@ -69,7 +72,7 @@ class DiffusersRollout(BaseRollout):
         ]
 
         self.rollout_module.transformer.eval()
-        micro_batches = prompts.split(self.config.rollout_batch_size)
+        micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
         generated_input_texts = []
         generated_results = []
 

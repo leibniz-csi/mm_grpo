@@ -38,7 +38,7 @@ class DiffusionRolloutConfig(BaseConfig):
     prompt_length: int = 128
     image_height: int = 512
     image_width: int = 512
-    rollout_batch_size: int = 8
+    micro_batch_size_per_gpu: int = 8
     num_inference_steps: int = 10
     noise_level: float = 0.7
     guidance_scale: float = 4.5
@@ -46,7 +46,7 @@ class DiffusionRolloutConfig(BaseConfig):
     sde_window_size: Optional[int] = None
     sde_window_range: Optional[tuple[int, int]] = None
 
-    dtype: str = "bf16"
+    dtype: str = "bfloat16"
 
     tensor_model_parallel_size: int = 1
     data_parallel_size: int = 1

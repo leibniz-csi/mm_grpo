@@ -19,10 +19,9 @@ Single Process Actor
 
 import logging
 import os
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
-from diffusers import DiffusionPipeline
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.tensor import DTensor
@@ -30,11 +29,15 @@ from verl.utils.device import get_device_id, get_device_name
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
 from verl.utils.profiler import GPUMemoryLogger
 from verl.utils.py_functional import append_to_dict
+from verl.utils.torch_dtypes import PrecisionType
 from verl.workers.actor import BasePPOActor
 
 from ...protocol import DataProto
 from ...trainer.ppo.core_algos import get_policy_loss_fn, kl_penalty
 from ..config import DiffusionFSDPActorConfig
+
+if TYPE_CHECKING:
+    from diffusers import DiffusionPipeline
 
 __all__ = ["DiffusersPPOActor"]
 
@@ -57,7 +60,7 @@ class DiffusersPPOActor(BasePPOActor):
         self,
         config: DiffusionFSDPActorConfig,
         actor_module: nn.Module,
-        pipeline: DiffusionPipeline,
+        pipeline: "DiffusionPipeline",
         actor_optimizer: Optional[torch.optim.Optimizer] = None,
     ):
         """When optimizer is None, it is Reference Policy"""
@@ -66,11 +69,15 @@ class DiffusersPPOActor(BasePPOActor):
         self.actor_optimizer = actor_optimizer
         self.scheduler = pipeline.scheduler
         self.device_name = get_device_name()
-        self.dtype = (
-            torch.float16
-            if self.config.fsdp_config.model_dtype == "fp16"
-            else torch.bfloat16
+        self.param_dtype = PrecisionType.to_dtype(
+            self.config.fsdp_config.get("dtype", "bfloat16")
         )
+        if self.param_dtype == torch.float16:
+            from torch.distributed.fsdp.sharded_grad_scaler import ShardedGradScaler
+
+            self.scaler = ShardedGradScaler(growth_interval=400)
+        else:
+            self.scaler = None
 
     def _forward_micro_batch(
         self, micro_batch: dict[str, torch.Tensor], step: int
@@ -80,7 +87,7 @@ class DiffusersPPOActor(BasePPOActor):
             log_probs: # (bs, )
         """
 
-        with torch.autocast(device_type=self.device_name, dtype=self.dtype):
+        with torch.autocast(device_type=self.device_name, dtype=self.param_dtype):
             latents = micro_batch["latents"]
             timesteps = micro_batch["timesteps"]
             prompt_embeds = micro_batch["prompt_embeds"]
@@ -130,6 +137,8 @@ class DiffusersPPOActor(BasePPOActor):
         assert self.config.grad_clip is not None
         assert self.actor_optimizer is not None
 
+        if self.scaler is not None:
+            self.scaler.unscale_(self.actor_optimizer)
         if isinstance(self.actor_module, FSDP):
             grad_norm = self.actor_module.clip_grad_norm_(
                 max_norm=self.config.grad_clip
@@ -147,13 +156,17 @@ class DiffusersPPOActor(BasePPOActor):
             grad_norm = grad_norm.full_tensor()
 
         # if grad_norm is not finite, skip the update
-        if not torch.isfinite(grad_norm):
-            print(
-                f"WARN: rank {torch.distributed.get_rank()} grad_norm is not finite: {grad_norm}"
-            )
-            self.actor_optimizer.zero_grad()
+        if self.scaler is not None:
+            self.scaler.step(self.actor_optimizer)
+            self.scaler.update()
         else:
-            self.actor_optimizer.step()
+            if not torch.isfinite(grad_norm):
+                print(
+                    f"WARN: rank {torch.distributed.get_rank()} grad_norm is not finite: {grad_norm}"
+                )
+                self.actor_optimizer.zero_grad()
+            else:
+                self.actor_optimizer.step()
         return grad_norm
 
     @GPUMemoryLogger(role="diffusers actor", logger=logger)
@@ -264,7 +277,10 @@ class DiffusersPPOActor(BasePPOActor):
                             )
 
                         loss = policy_loss * loss_scale_factor
-                        loss.backward()
+                        if self.scaler is not None:
+                            self.scaler.scale(loss).backward()
+                        else:
+                            loss.backward()
 
                         micro_batch_metrics["actor/pg_loss"] = (
                             pg_loss.detach().item() * loss_scale_factor
