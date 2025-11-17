@@ -72,7 +72,7 @@ class DiffusersRollout(BaseRollout):
         ]
 
         self.rollout_module.transformer.eval()
-        micro_batches = prompts.split(self.config.rollout_batch_size)
+        micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
         generated_input_texts = []
         generated_results = []
 

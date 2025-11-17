@@ -14,7 +14,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.model.lora_alpha=64 \
     actor_rollout_ref.actor.optim.lr=3e-4 \
     actor_rollout_ref.actor.optim.weight_decay=0.001 \
-    actor_rollout_ref.actor.ppo_mini_batch_size=4 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=8 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0 \
@@ -29,7 +29,6 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.context_parallel_size=1 \
     actor_rollout_ref.rollout.name=diffusers \
     actor_rollout_ref.rollout.n=8 \
-    actor_rollout_ref.rollout.rollout_batch_size=8 \
     actor_rollout_ref.rollout.dtype=float16 \
     actor_rollout_ref.rollout.guidance_scale=1.0 \
     actor_rollout_ref.rollout.noise_level=0.8 \

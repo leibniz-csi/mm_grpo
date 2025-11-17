@@ -277,7 +277,10 @@ class DiffusersPPOActor(BasePPOActor):
                             )
 
                         loss = policy_loss * loss_scale_factor
-                        loss.backward()
+                        if self.scaler is not None:
+                            self.scaler.scale(loss).backward()
+                        else:
+                            loss.backward()
 
                         micro_batch_metrics["actor/pg_loss"] = (
                             pg_loss.detach().item() * loss_scale_factor

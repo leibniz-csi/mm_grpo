@@ -56,8 +56,8 @@ validation_shuffle: False
 filter_overlong_prompts: False
 
 # Truncate the input_ids or prompt if they exceed max_prompt_length.
-# Options: 'error', 'none'. Default is 'error'.
-truncation: error
+# Options: 'error', 'none'. Default is 'none'.
+truncation: none
 
 # Optional: specify a custom dataset class path and name if overriding default loading behavior.
 custom_cls:

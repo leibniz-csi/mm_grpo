@@ -74,9 +74,6 @@ algorithm:
 # config for the trainer
 trainer:
 
-  # Whether to balance batch sizes across distributed workers
-  balance_batch: True
-
   # Number of epochs in training
   total_epochs: 30
 
@@ -84,10 +81,10 @@ trainer:
   total_training_steps: null
 
   # Project name for experiment tracking (e.g., wandb)
-  project_name: verl_examples
+  project_name: gerl_examples
 
   # Experiment name for run identification in tracking tools
-  experiment_name: gsm8k
+  experiment_name: flow_grpo
 
   # Logging backends to use: "console", "wandb", etc.
   logger: ["console", "wandb"]
