@@ -18,11 +18,10 @@ Rollout with diffusers models.
 
 import logging
 import os
-from typing import Generator, Optional
+from typing import TYPE_CHECKING, Generator, Optional
 
 import numpy as np
 import torch
-from diffusers import DiffusionPipeline
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
@@ -32,6 +31,9 @@ from verl.workers.rollout.base import BaseRollout
 
 from ....protocol import DataProto
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
+
+if TYPE_CHECKING:
+    from diffusers import DiffusionPipeline
 
 __all__ = ["DiffusersRollout"]
 
@@ -46,7 +48,7 @@ class DiffusersRollout(BaseRollout):
         config: DiffusionRolloutConfig,
         model_config: DiffusersModelConfig,
         device_mesh: DeviceMesh,
-        rollout_module: Optional[DiffusionPipeline] = None,
+        rollout_module: Optional["DiffusionPipeline"] = None,
     ):
         super().__init__(config, model_config, device_mesh)
         self.config = config

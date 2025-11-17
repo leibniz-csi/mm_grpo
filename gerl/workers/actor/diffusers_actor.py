@@ -19,10 +19,9 @@ Single Process Actor
 
 import logging
 import os
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
-from diffusers import DiffusionPipeline
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 from torch.distributed.tensor import DTensor
@@ -36,6 +35,9 @@ from verl.workers.actor import BasePPOActor
 from ...protocol import DataProto
 from ...trainer.ppo.core_algos import get_policy_loss_fn, kl_penalty
 from ..config import DiffusionFSDPActorConfig
+
+if TYPE_CHECKING:
+    from diffusers import DiffusionPipeline
 
 __all__ = ["DiffusersPPOActor"]
 
@@ -58,7 +60,7 @@ class DiffusersPPOActor(BasePPOActor):
         self,
         config: DiffusionFSDPActorConfig,
         actor_module: nn.Module,
-        pipeline: DiffusionPipeline,
+        pipeline: "DiffusionPipeline",
         actor_optimizer: Optional[torch.optim.Optimizer] = None,
     ):
         """When optimizer is None, it is Reference Policy"""
