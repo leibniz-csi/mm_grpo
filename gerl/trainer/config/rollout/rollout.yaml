@@ -9,7 +9,7 @@ mode: sync
 
 # typically the same as data max prompt length
 # same as data.max_prompt_length if it exists
-prompt_length: ${oc.select:data.max_prompt_length,512}
+prompt_length: ${oc.select:data.max_prompt_length,128}
 
 # image height
 image_height: 512
@@ -39,8 +39,8 @@ sde_window_size: null
 sde_window_range: null
 
 # for diffusers rollout
-# Rollout dtype. Shoudd Align with actor model's FSDP/Megatron type.
-dtype: bf16
+# Rollout model parameters type. Align with actor model's FSDP/Megatron type.
+dtype: bfloat16
 
 # TP size for rollout
 tensor_model_parallel_size: 1

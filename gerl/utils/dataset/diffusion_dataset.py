@@ -32,7 +32,14 @@ class DiffusionTextPromptDataset(Dataset):
             self.prompts = [line.strip() for line in f.readlines()]
 
         self.max_prompt_length = config.get("max_prompt_length", 1024)
+        self.truncation = config.get("truncation", "error")
         self.filter_overlong_prompts = config.get("filter_overlong_prompts", True)
+
+        if self.truncation == "error":
+            for prompt in self.prompts:
+                raise RuntimeError(
+                    f"Prompt length {len(prompt)} is longer than {self.max_prompt_length}."
+                )
 
         if self.filter_overlong_prompts:
             self.prompts = [x for x in self.prompts if len(x) <= self.max_prompt_length]

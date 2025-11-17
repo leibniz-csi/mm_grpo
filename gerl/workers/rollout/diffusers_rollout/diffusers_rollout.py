@@ -27,6 +27,7 @@ from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
 from verl.utils.profiler import GPUMemoryLogger
+from verl.utils.torch_dtypes import PrecisionType
 from verl.workers.rollout.base import BaseRollout
 
 from ....protocol import DataProto
@@ -54,11 +55,11 @@ class DiffusersRollout(BaseRollout):
         if rollout_module is None:
             raise ValueError("rollout_module must be provided for DiffusersRollout")
         self.rollout_module = rollout_module
-        self.dtype = torch.float16 if config.dtype == "fp16" else torch.bfloat16
+        self.dtype = PrecisionType.to_dtype(config.dtype)
 
         self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
 
-    @GPUMemoryLogger(role="diffusers rollout spmd", logger=logger)
+    @GPUMemoryLogger(role="diffusers rollout", logger=logger)
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         if self._cached_prompt_embeds is None:

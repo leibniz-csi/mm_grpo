@@ -263,6 +263,8 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
             pipeline = DiffusionPipeline.from_pretrained(
                 pretrained_model_name_or_path=local_path
             )
+            pipeline.set_progress_bar_config(disable=True)
+
             inject_SDE_scheduler_into_pipeline(
                 pipeline, pretrained_model_name_or_path=local_path
             )
@@ -343,7 +345,9 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
         if self.rank == 0:
             print_model_size(actor_module)
 
-        log_gpu_memory_usage(f"After init {role} from HF AutoModel", logger=logger)
+        log_gpu_memory_usage(
+            f"After init {role} from Diffusers Pipeline", logger=logger
+        )
 
         # We wrap FSDP for rollout as well
         mixed_precision_config = fsdp_config.get("mixed_precision", None)
@@ -358,7 +362,7 @@ class DiffusionActorRolloutRefWorker(Worker, DistProfilerExtension):
                 mixed_precision_config.get("buffer_dtype", "fp32")
             )
         else:
-            param_dtype = torch.bfloat16
+            param_dtype = PrecisionType.to_dtype(fsdp_config.dtype)
             reduce_dtype = torch.float32
             buffer_dtype = torch.float32
 

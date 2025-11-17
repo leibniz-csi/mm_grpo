@@ -46,7 +46,7 @@ class DiffusionRolloutConfig(BaseConfig):
     sde_window_size: Optional[int] = None
     sde_window_range: Optional[tuple[int, int]] = None
 
-    dtype: str = "bf16"
+    dtype: str = "bfloat16"
 
     tensor_model_parallel_size: int = 1
     data_parallel_size: int = 1

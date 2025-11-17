@@ -378,6 +378,13 @@ class RayDiffusionPPOTrainer:
                 interleave=True,
             )
 
+            # we only do validation on rule-based rm
+            if (
+                self.config.reward_model.enable
+                and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model"
+            ):
+                return {}
+
             # Store original inputs
             sample_inputs.extend(test_batch.non_tensor_batch["prompt"])
             sample_uids.extend(test_batch.non_tensor_batch["uid"])

@@ -2,7 +2,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     algorithm.adv_estimator=flow_grpo \
     data.train_files=$HOME/dataset/ocr/train.txt \
     data.val_files=$HOME/dataset/ocr/test.txt \
-    data.train_batch_size=8 \
+    data.train_batch_size=16 \
     data.val_max_samples=16 \
     data.max_prompt_length=128 \
     data.filter_overlong_prompts=False \
@@ -20,7 +20,9 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.actor.kl_loss_coef=0 \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
-    actor_rollout_ref.actor.fsdp_config.model_dtype=bf16 \
+    actor_rollout_ref.actor.fsdp_config.model_dtype=float16 \
+    actor_rollout_ref.actor.fsdp_config.dtype=float16 \
+    actor_rollout_ref.actor.fsdp_config.fsdp_size=1 \
     actor_rollout_ref.actor.policy_loss.loss_mode=flow_grpo \
     actor_rollout_ref.rollout.tensor_model_parallel_size=1 \
     actor_rollout_ref.rollout.data_parallel_size=1 \
@@ -28,7 +30,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.name=diffusers \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.rollout_batch_size=8 \
-    actor_rollout_ref.rollout.dtype=bf16 \
+    actor_rollout_ref.rollout.dtype=float16 \
     actor_rollout_ref.rollout.guidance_scale=1.0 \
     actor_rollout_ref.rollout.noise_level=0.8 \
     actor_rollout_ref.rollout.sde_type="cps" \
@@ -38,7 +40,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     trainer.logger='["console", "wandb"]' \
     trainer.project_name='flow_grpo' \
     trainer.experiment_name='sd35_m_ocr_fast' \
-    trainer.n_gpus_per_node=1 \
+    trainer.n_gpus_per_node=2 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
     trainer.test_freq=5 \
