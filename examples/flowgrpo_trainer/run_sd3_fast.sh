@@ -7,7 +7,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     data.max_prompt_length=128 \
     data.filter_overlong_prompts=False \
     data.data_source=ocr \
-    data.reward_fn='["jpeg-imcompressibility"]' \
+    data.reward_fn='["paddle-ocr"]' \
     actor_rollout_ref.model.path=stabilityai/stable-diffusion-3.5-medium \
     actor_rollout_ref.model.enable_gradient_checkpointing=False \
     actor_rollout_ref.model.lora_rank=32 \

@@ -14,6 +14,15 @@
 # ============================================================================
 
 
+def compute_score(scorer, images, prompts):
+    """
+    Compute single/multiple reward score(s) for a batch of images and prompts.
+    """
+    scores = scorer(images, prompts)
+
+    return scores
+
+
 def default_compute_score(
     data_source,
     solution_str,
@@ -43,11 +52,12 @@ def default_compute_score(
     if len(reward_fn) > 0:
         scorers_weight = [1 / len(reward_fn)] * len(
             reward_fn
-        )  # TODO: TBD support custom weights
+        )  # TODO: TBD support custom weights, now use equal weights
         scorers = dict(zip(reward_fn, scorers_weight))
         from . import multi
 
-        res = multi.compute_score(solution_str, ground_truth, scorers)
+        scorer = multi.MultiScorer(scorers)
+        res = compute_score(scorer, solution_str, ground_truth)
     else:
         print(
             "reward_fn is not specified, use default reward function for each data_source."
@@ -57,11 +67,12 @@ def default_compute_score(
         ]:
             from . import ocr
 
-            res = ocr.compute_score(solution_str, ground_truth)
+            scorer = ocr.PaddleOcrScorer()  # init OCR model scorer
+            res = compute_score(scorer, solution_str, ground_truth)
 
         else:
             print(
-                f"Unrecognized {data_source=}, use jpeg-imcompressibility as default."
+                f"Unrecognized {data_source=}, use `jpeg-imcompressibility` as default."
             )
             from . import jpeg_imcompressibility
 

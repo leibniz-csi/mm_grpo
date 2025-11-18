@@ -99,7 +99,7 @@ class PaddleOcrScorer(Scorer):
         return rewards
 
 
-def compute_score(images, prompts, score_name="paddle_ocr"):
+def compute_score(images, prompts):
     """
     Compute OCR reward score using PaddleOCR for a batch of images and prompts.
     """

@@ -29,8 +29,7 @@ import torch
 from omegaconf import DictConfig
 from verl import DataProto
 from verl.utils.transferqueue_utils import tqbridge
-from verl.workers.reward_manager.abstract import (AbstractRewardManager,
-                                                  RawRewardFn)
+from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
 from ...utils.reward_score import default_compute_score
 from ...workers.reward_manager import get_reward_manager_cls
@@ -140,8 +139,8 @@ def load_reward_manager(
     # diffusion: DiffusionRewardManager
     # Note(haibin.lin): For custom reward managers, please make sure they are imported and
     # registered via `gerl.workers.reward_manager.register`
-    # By default reward_manager is set to naive (NaiveRewardManager)
-    reward_manager_name = config.reward_model.get("reward_manager", "naive")
+    # By default reward_manager is set to diffusion-batch (DiffusionBatchRewardManager)
+    reward_manager_name = config.reward_model.get("reward_manager", "diffusion-batch")
     reward_manager_cls = get_reward_manager_cls(reward_manager_name)
 
     if compute_score is None:
