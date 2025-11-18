@@ -400,7 +400,7 @@ class RayDiffusionPPOTrainer:
             test_gen_batch.meta_info = {
                 "noise_level": self.config.actor_rollout_ref.rollout.val_kwargs.noise_level,
                 "num_inference_steps": self.config.actor_rollout_ref.rollout.val_kwargs.num_inference_steps,
-                "noise_seed": self.config.actor_rollout_ref.rollout.val_kwargs.seed,
+                "seed": self.config.actor_rollout_ref.rollout.val_kwargs.seed,
                 "validate": True,
                 "global_steps": self.global_steps,
             }
