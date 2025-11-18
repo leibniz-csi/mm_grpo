@@ -648,12 +648,18 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                 self.actor_module = self.actor_module_fsdp._fsdp_wrapped_module
 
             if self._is_offload_param:
+                log_gpu_memory_usage(
+                    "Before offload actor model during init", logger=logger
+                )
                 offload_fsdp_model_to_cpu(self.actor_module_fsdp)
                 log_gpu_memory_usage(
                     "After offload actor model during init", logger=logger
                 )
 
             if self._is_offload_optimizer:
+                log_gpu_memory_usage(
+                    "Before offload actor optimizer during init", logger=logger
+                )
                 offload_fsdp_optimizer(optimizer=self.actor_optimizer)
                 log_gpu_memory_usage(
                     "After offload actor optimizer during init", logger=logger
@@ -709,10 +715,22 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
     def update_actor(self, data: DataProto):
         assert self._is_actor
         if self._is_offload_param:
+            log_gpu_memory_usage(
+                "Before load actor model to GPU during update_actor", logger=logger
+            )
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
+            log_gpu_memory_usage(
+                "After load actor model to GPU during update_actor", logger=logger
+            )
         if self._is_offload_optimizer:
+            log_gpu_memory_usage(
+                "Before load actor optimzier to GPU during update_actor", logger=logger
+            )
             load_fsdp_optimizer(
                 optimizer=self.actor_optimizer, device_id=get_device_id()
+            )
+            log_gpu_memory_usage(
+                "After load actor optimzier to GPU during update_actor", logger=logger
             )
 
         data = data.to(
@@ -738,11 +756,17 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         output = output.to("cpu")
 
         if self._is_offload_param:
+            log_gpu_memory_usage(
+                "Before offload actor model during update_actor", logger=logger
+            )
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
             log_gpu_memory_usage(
                 "After offload actor model during update_actor", logger=logger
             )
         if self._is_offload_optimizer:
+            log_gpu_memory_usage(
+                "Before offload actor optimizer during update_actor", logger=logger
+            )
             offload_fsdp_optimizer(optimizer=self.actor_optimizer)
             log_gpu_memory_usage(
                 "After offload actor optimizer during update_actor", logger=logger
@@ -794,8 +818,13 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         # which is mostly used for ref log_prob calculation
         assert self._is_actor
         if self._is_offload_param:
+            log_gpu_memory_usage(
+                "Before load actor model to GPU during compute_log_prob", logger=logger
+            )
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
-
+            log_gpu_memory_usage(
+                "After load actor model to GPU during compute_log_prob", logger=logger
+            )
         # Support all hardwares
         from contextlib import nullcontext
 
@@ -816,6 +845,9 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             self.actor.actor_module._handle.reshard(True)
 
         if self._is_offload_param:
+            log_gpu_memory_usage(
+                "Before offload actor model during compute_log_prob", logger=logger
+            )
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
             log_gpu_memory_usage(
                 "After offload actor model during compute_log_prob", logger=logger

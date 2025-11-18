@@ -14,26 +14,8 @@
 # ============================================================================
 
 
-def compute_score(scorer, images, prompts):
-    """
-    Compute single/multiple reward score(s) for a batch of images and prompts.
-    """
-    scores = scorer(images, prompts)
-
-    return scores
-
-
-def default_compute_score(
-    data_source,
-    solution_str,
-    ground_truth,
-    extra_info=None,
-    sandbox_fusion_url=None,
-    concurrent_semaphore=None,
-    memory_limit_mb=None,
-    **kwargs,
-):
-    """Compute the score for a given solution based on the data source.
+class DefaultComputeScore:
+    """Compute the score for a given solution based on the reward_fn or data source.
 
     Args:
         data_source (str): The source dataset identifier which determines the scoring method.
@@ -42,51 +24,74 @@ def default_compute_score(
         extra_info (dict, optional): Additional information that might be needed for scoring. Defaults to None.
 
     Returns:
-        float: The computed score as a floating point number. If the result is a dictionary,
+        dict/float: The computed score as a floating point number. If the result is a dictionary,
                it returns the dictionary instead.
-
-    Raises:
-        NotImplementedError: If the reward function is not implemented for the given data source.
     """
-    reward_fn = extra_info.get("reward_fn", []) if extra_info else []
-    if len(reward_fn) > 0:
-        scorers_weight = [1 / len(reward_fn)] * len(
-            reward_fn
-        )  # TODO: TBD support custom weights, now use equal weights
-        scorers = dict(zip(reward_fn, scorers_weight))
-        from . import multi
 
-        scorer = multi.MultiScorer(scorers)
-        res = compute_score(scorer, solution_str, ground_truth)
-    else:
-        print(
-            "reward_fn is not specified, use default reward function for each data_source."
-        )
-        if data_source in [
-            "ocr",
-        ]:
-            from . import ocr
+    def __init__(
+        self,
+    ) -> None:
+        super().__init__()
+        self.scorer = None
 
-            scorer = ocr.PaddleOcrScorer()  # init OCR model scorer
-            res = compute_score(scorer, solution_str, ground_truth)
+    def get_scorer(
+        self,
+        data_source,
+        extra_info=None,
+    ) -> None:
+        """Initialize once the scorer
+        Args:
+            data_source (str): The source dataset identifier which determines the scoring method.
+            extra_info (dict, optional): Additional information that might be needed for scoring. Defaults to None.
+        """
+        reward_fn = extra_info.get("reward_fn", []) if extra_info else []
+        if len(reward_fn) > 0:
+            scorers_weight = [1 / len(reward_fn)] * len(
+                reward_fn
+            )  # TODO: TBD support custom weights, now use equal weights
+            scorers = dict(zip(reward_fn, scorers_weight))
+            from . import multi
 
+            self.scorer = multi.MultiScorer(scorers)
         else:
             print(
-                f"Unrecognized {data_source=}, use `jpeg-imcompressibility` as default."
+                "reward_fn is not specified, use default reward function for each data_source."
             )
-            from . import jpeg_imcompressibility
+            if data_source in [
+                "ocr",
+            ]:
+                from . import ocr
 
-            res = jpeg_imcompressibility.compute_score(solution_str, ground_truth)
+                self.scorer = ocr.PaddleOcrScorer()  # init OCR model scorer
+            else:
+                print(
+                    f"Unrecognized {data_source=}, use `jpeg-imcompressibility` as default."
+                )
+                from . import jpeg_imcompressibility
 
-    if isinstance(res, dict):
-        return res
-    elif isinstance(res, int | float | bool):
-        return float(res)
-    elif isinstance(res, list):
-        if len(res) == 1:
-            return float(res[0])
-        else:
-            return [float(r) for r in res]
+                self.scorer = jpeg_imcompressibility.JpegImcompressibilityScorer()
+
+    def __call__(
+        self,
+        data_source,
+        solution_str,
+        ground_truth,
+        extra_info=None,
+        **kwargs,
+    ):
+        if self.scorer is None:
+            self.get_scorer(data_source, extra_info=extra_info)
+        res = self.scorer(solution_str, ground_truth)
+
+        if isinstance(res, dict):
+            return res
+        elif isinstance(res, int | float | bool):
+            return float(res)
+        elif isinstance(res, list):
+            if len(res) == 1:
+                return float(res[0])
+            else:
+                return [float(r) for r in res]
 
 
-__all__ = ["default_compute_score"]
+__all__ = ["DefaultComputeScore"]
