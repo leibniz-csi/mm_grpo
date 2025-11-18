@@ -174,18 +174,26 @@ def compute_flow_grpo_outcome_advantage(
     id2std = {}
 
     with torch.no_grad():
+        if global_std:
+            batch_std = torch.std(scores)
+        else:
+            batch_std = None
+
         bsz = scores.shape[0]
         for i in range(bsz):
             id2score[index[i]].append(scores[i])
         for idx in id2score:
             if len(id2score[idx]) == 1:
                 id2mean[idx] = torch.tensor(0.0)
-                id2std[idx] = torch.tensor(1.0)
+                if global_std:
+                    id2std[idx] = batch_std
+                else:
+                    id2std[idx] = torch.tensor(1.0)
             elif len(id2score[idx]) > 1:
                 scores_tensor = torch.stack(id2score[idx])
                 id2mean[idx] = torch.mean(scores_tensor)
                 if global_std:
-                    id2std[idx] = torch.std(scores)
+                    id2std[idx] = batch_std
                 else:
                     id2std[idx] = torch.std(scores_tensor)
             else:
