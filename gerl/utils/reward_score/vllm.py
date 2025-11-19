@@ -126,9 +126,12 @@ class QwenVLOcrVLLMScorer(VLLMScorer):
     @staticmethod
     def calculate_score(output_text: List[str], prompts: List[str]) -> List[float]:
         scores = []
+        # assume the prompt is in the format: xxx display/show with "words" xxx
+        prompts = [
+            prompt.split('"')[1] if prompt.find('"') >= 0 else prompt
+            for prompt in prompts
+        ]
         for text, prompt in zip(output_text, prompts):
-            # assume the prompt is in the format: xxx display/show with "words" xxx
-            prompt = prompt.split('"')[1]
             # remove any nonvisible characters and convert to lowercase
             prompt = re.sub(r"\s+", "", prompt).lower()
             text = re.sub(r"\s+", "", text).lower()

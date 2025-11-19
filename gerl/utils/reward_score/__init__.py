@@ -30,9 +30,15 @@ class DefaultComputeScore:
 
     def __init__(
         self,
+        sandbox_fusion_url=None,
+        concurrent_semaphore=None,
+        memory_limit_mb=None,
     ) -> None:
         super().__init__()
         self.scorer = None
+        self.sandbox_fusion_url = sandbox_fusion_url
+        self.concurrent_semaphore = concurrent_semaphore
+        self.memory_limit_mb = memory_limit_mb
 
     def get_scorer(
         self,

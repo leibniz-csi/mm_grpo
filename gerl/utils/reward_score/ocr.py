@@ -58,7 +58,11 @@ class PaddleOcrScorer(Scorer):
                 images = images.unsqueeze(0)
             images = self.array_to_images(images)
 
-        prompts = [prompt.split('"')[1] for prompt in prompts]
+        # With no '"' in ground_truth, while with format xxx display/show with "words" xxx in original text prompt
+        prompts = [
+            prompt.split('"')[1] if prompt.find('"') >= 0 else prompt
+            for prompt in prompts
+        ]
         rewards = []
         # Ensure input lengths are consistent
         assert len(images) == len(prompts), (
