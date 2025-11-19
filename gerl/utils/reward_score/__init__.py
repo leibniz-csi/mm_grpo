@@ -58,7 +58,7 @@ class DefaultComputeScore:
             scorers = dict(zip(reward_fn, scorers_weight))
             from . import multi
 
-            self.scorer = multi.MultiScorer(scorers)
+            self.scorer = multi.MultiScorer(scorers)  # type: ignore
         else:
             print(
                 "reward_fn is not specified, use default reward function for each data_source."
@@ -68,14 +68,15 @@ class DefaultComputeScore:
             ]:
                 from . import ocr
 
-                self.scorer = ocr.PaddleOcrScorer()  # init OCR model scorer
+                # init OCR model scorer
+                self.scorer = ocr.PaddleOcrScorer()  # type: ignore
             else:
                 print(
                     f"Unrecognized {data_source=}, use `jpeg-imcompressibility` as default."
                 )
                 from . import jpeg_imcompressibility
 
-                self.scorer = jpeg_imcompressibility.JpegImcompressibilityScorer()
+                self.scorer = jpeg_imcompressibility.JpegImcompressibilityScorer()  # type: ignore
 
     def __call__(
         self,

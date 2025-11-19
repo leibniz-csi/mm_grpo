@@ -164,7 +164,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
         """
         self.tokenizer = tokenizer  # Store the tokenizer for decoding token IDs
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
-        self.compute_score = compute_score or default_compute_score
+        self.compute_score = compute_score or DefaultComputeScore()
         self.reward_fn_key = reward_fn_key
         self.reward_fn = reward_fn
 

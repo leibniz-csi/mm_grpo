@@ -19,7 +19,7 @@ import logging
 import os
 import re
 from io import BytesIO
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import Levenshtein
 import numpy as np
@@ -33,14 +33,14 @@ logger = logging.getLogger(__name__)
 
 
 class VLLMScorer(Scorer):
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None) -> None:
         # following https://github.com/openai/openai-python/issues/1254
         # we should use a single event loop for AsyncOpenAI call
         self._loop = asyncio.new_event_loop()
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
 
     async def async_process_queries(
-        self, queries: List[str], model_path: str, base_url: str
+        self, queries: List[list[Any]], model_path: str, base_url: Optional[str]
     ) -> List[str]:
         results = await asyncio.gather(
             *(
@@ -51,7 +51,7 @@ class VLLMScorer(Scorer):
         return results
 
     async def _async_query_openai(
-        self, query: str, model_path: str, base_url: str
+        self, query: List[list[Any]], model_path: str, base_url: Optional[str]
     ) -> str:
         completion = await self.aclient.chat.completions.create(
             model=model_path,
@@ -67,10 +67,11 @@ class VLLMScorer(Scorer):
         )
         return completion.choices[0].message.content
 
+    @torch.no_grad()
     def __call__(
         self,
         images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: Optional[List[str]] = None,
+        prompts: List[str],
     ) -> List[float]:
         raise NotImplementedError("This method should be implemented in subclasses.")
 
@@ -84,6 +85,7 @@ class QwenVLOcrVLLMScorer(VLLMScorer):
         self.model_path = os.environ.get("QWEN_VL_OCR_PATH", self._DEFAULT_MODEL)
         super().__init__(base_url=self.base_url)
 
+    @torch.no_grad()
     def __call__(
         self,
         images: Union[List[Image.Image], np.ndarray, torch.Tensor],
