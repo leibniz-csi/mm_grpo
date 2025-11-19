@@ -18,7 +18,7 @@ ppo_mini_batch_size: 8
 ppo_micro_batch_size_per_gpu: 8
 
 # PPO clip ratio
-clip_ratio: 0.00001
+clip_ratio: 0.0001
 
 # Maximum absolute value for advantage clipping
 clip_max: 5.0
