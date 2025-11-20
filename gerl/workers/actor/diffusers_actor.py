@@ -194,8 +194,6 @@ class DiffusersPPOActor(BasePPOActor):
         ]
 
         data = data.select(batch_keys=select_keys)
-        # shuffle samples along batch dimension
-        data.reorder(torch.randperm(len(data)))
 
         # Split to make minibatch iterator for updating the actor
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
