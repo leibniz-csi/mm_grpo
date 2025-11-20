@@ -13,7 +13,6 @@
 # limitations under the License.
 # ============================================================================
 
-import random
 from dataclasses import dataclass
 from typing import Any, Callable, Literal, Optional, Sequence
 
@@ -224,9 +223,13 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         self._num_timesteps = len(timesteps)
 
         if sde_window_size is not None:
-            start = random.randint(
-                sde_window_range[0], sde_window_range[1] - sde_window_size
-            )
+            start = torch.randint(
+                sde_window_range[0],
+                sde_window_range[1] - sde_window_size + 1,
+                (1,),
+                generator=generator,
+                device=device,
+            ).item()
             end = start + sde_window_size
             sde_window = (start, end)
         else:
@@ -380,8 +383,8 @@ class StableDiffusion3PipelineWithLogProb(StableDiffusion3Pipeline):
         all_log_probs = torch.stack(all_log_probs, dim=1)
         all_timesteps = torch.stack(all_timesteps).unsqueeze(0).expand(batch_size, -1)
         if self.do_classifier_free_guidance:
-            prompt_embeds = prompt_embeds[:batch_size]
-            pooled_prompt_embeds = pooled_prompt_embeds[:batch_size]
+            prompt_embeds = prompt_embeds[batch_size:]
+            pooled_prompt_embeds = pooled_prompt_embeds[batch_size:]
 
         if not return_dict:
             return (
