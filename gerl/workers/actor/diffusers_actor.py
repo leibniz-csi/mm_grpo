@@ -202,6 +202,9 @@ class DiffusersPPOActor(BasePPOActor):
         metrics: dict[str, Any] = {}
         for _ in range(self.config.ppo_epochs):
             for batch_idx, mini_batch in enumerate(mini_batches):
+                if self.config.shuffle_micro_batch:
+                    mini_batch.reorder(torch.randperm(len(mini_batch)))
+
                 self.gradient_accumulation = (
                     self.config.ppo_mini_batch_size
                     * data.meta_info["cached_steps"]

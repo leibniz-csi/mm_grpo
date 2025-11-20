@@ -17,6 +17,9 @@ ppo_mini_batch_size: 8
 # Split each mini-batch into micro-batches of this size per GPU for PPO
 ppo_micro_batch_size_per_gpu: 8
 
+# Whether to shuffle micro-batches during training
+shuffle_micro_batch: false
+
 # PPO clip ratio
 clip_ratio: 0.0001
 
