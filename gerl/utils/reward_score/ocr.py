@@ -58,7 +58,6 @@ class PaddleOcrScorer(Scorer):
                 images = images.unsqueeze(0)
             images = self.array_to_images(images)
 
-        prompts = [prompt.split('"')[1] for prompt in prompts]
         rewards = []
         # Ensure input lengths are consistent
         assert len(images) == len(prompts), (

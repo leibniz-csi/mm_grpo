@@ -66,10 +66,12 @@ class DiffusersSyncRollout(BaseRollout):
     def generate_sequences(self, prompts: DataProto) -> DataProto:
         if self._cached_prompt_embeds is None:
             self._cached_prompt_embeds = self.cache_prompt_embeds()
-        negative_prompt_embeds = self._cached_prompt_embeds["negative_prompt_embeds"]
+        negative_prompt_embeds = self._cached_prompt_embeds[
+            "negative_prompt_embeds"
+        ].to(get_device_name())
         negative_pooled_prompt_embeds = self._cached_prompt_embeds[
             "negative_pooled_prompt_embeds"
-        ]
+        ].to(get_device_name())
 
         self.rollout_module.transformer.eval()
         micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
@@ -148,8 +150,8 @@ class DiffusersSyncRollout(BaseRollout):
             max_sequence_length=self.config.prompt_length,
         )
         return {
-            "negative_prompt_embeds": prompt_embeds,
-            "negative_pooled_prompt_embeds": pooled_prompt_embeds,
+            "negative_prompt_embeds": prompt_embeds.to("cpu"),
+            "negative_pooled_prompt_embeds": pooled_prompt_embeds.to("cpu"),
         }
 
     async def resume(self, tags: list[str]):
