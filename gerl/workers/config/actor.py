@@ -51,6 +51,7 @@ class DiffusionActorConfig(BaseConfig):
         strategy (str): Training strategy. Must be specified.
         ppo_mini_batch_size (int): Mini-batch size for PPO training.
         ppo_micro_batch_size_per_gpu (int): Micro-batch size per GPU for PPO training.
+        shuffle_micro_batch (bool): Whether to shuffle micro-batches during training.
         clip_ratio (float): PPO clipping ratio for policy loss.
         policy_loss (PolicyLossConfig): Configuration for policy loss computation.
         use_kl_loss (bool): Whether to use KL divergence loss.
@@ -69,6 +70,7 @@ class DiffusionActorConfig(BaseConfig):
     strategy: str = MISSING
     ppo_mini_batch_size: int = 8
     ppo_micro_batch_size_per_gpu: int = 8
+    shuffle_micro_batch: bool = False
     clip_ratio: float = 1e-4
     clip_max: float = 5.0
     policy_loss: PolicyLossConfig = field(default_factory=PolicyLossConfig)

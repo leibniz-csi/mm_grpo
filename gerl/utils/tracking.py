@@ -29,16 +29,18 @@ class ValidationGenerationsLogger:
     def log_generations_to_wandb(self, samples, step):
         import wandb
 
+        columns = ["step", "prompt", "generation", "score"]
+
+        if not hasattr(self, "validation_table"):
+            # Initialize the table on first call
+            self.validation_table = wandb.Table(columns=columns, log_mode="INCREMENTAL")
+
+        for prompt, image, score in samples:
+            self.validation_table.add_data(
+                step, prompt, wandb.Image(image.float(), file_type="jpg"), score
+            )
+
         wandb.log(
-            {
-                "val/generations": [
-                    wandb.Image(
-                        image.float(),
-                        caption=f"Prompt: {prompt}\n Score: {score}",
-                        file_type="jpg",
-                    )
-                    for prompt, image, score in samples
-                ]
-            },
+            {"val/generations": self.validation_table},
             step=step,
         )
