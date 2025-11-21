@@ -40,7 +40,7 @@ class VLLMScorer(Scorer):
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
 
     async def async_process_queries(
-        self, queries: List[list[Any]], model_path: str, base_url: Optional[str]
+        self, queries: list[list[Any]], model_path: str, base_url: Optional[str]
     ) -> List[str]:
         results = await asyncio.gather(
             *(
@@ -51,7 +51,7 @@ class VLLMScorer(Scorer):
         return results
 
     async def _async_query_openai(
-        self, query: List[list[Any]], model_path: str, base_url: Optional[str]
+        self, query: list[list[Any]], model_path: str, base_url: Optional[str]
     ) -> str:
         completion = await self.aclient.chat.completions.create(
             model=model_path,
@@ -128,11 +128,6 @@ class QwenVLOcrVLLMScorer(VLLMScorer):
     @staticmethod
     def calculate_score(output_text: List[str], prompts: List[str]) -> List[float]:
         scores = []
-        # assume the prompt is in the format: xxx display/show with "words" xxx
-        prompts = [
-            prompt.split('"')[1] if prompt.find('"') >= 0 else prompt
-            for prompt in prompts
-        ]
         for text, prompt in zip(output_text, prompts):
             # remove any nonvisible characters and convert to lowercase
             prompt = re.sub(r"\s+", "", prompt).lower()

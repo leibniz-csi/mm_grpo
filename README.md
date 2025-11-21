@@ -26,7 +26,7 @@ For other optional requirements, please refer to `requirements.txt`
 
 Clone this repository:
 ```bash
-git https://github.com/leibniz-csi/mm_grpo.git
+git clone https://github.com/leibniz-csi/mm_grpo.git
 cd mm_grpo
 
 # install other required packages for specific rewards, e.g., for Paddle-OCR reward
@@ -43,9 +43,7 @@ Reward Models:
 - PaddleOCR:
   ```bash
     # install related packages
-    pip install paddlepaddle-gpu==2.6.2
-    pip install paddleocr==2.9.1
-    pip install python-Levenshtein
+    pip install paddlepaddle-gpu==2.6.2 paddleocr==2.9.1 python-Levenshtein
   ```
   ```python
   # pre-download model by running the Python script:
@@ -56,7 +54,7 @@ Reward Models:
 
 ### Quick Start
 
-**Flow-GRPO / Flow-GRPO-Fast**
+**Flow-GRPO-Fast**
 
 Below we provide examples to post-train SD-3.5-M on OCR task using OCR reward.
 
@@ -72,9 +70,10 @@ During training, denote paths in configs `data.train_files` and `data.val_files`
 <summary>Multi-card DP training</summary>
 
 We provide scipts for quick start:
-```bash
+<!-- ```bash
 # sd3 + Flow-GRPO
-bash examples/flowgrpo_trainer/run_sd3.sh
+bash examples/flowgrpo_trainer/run_sd3.sh -->
+```bash
 # sd3 + Flow-GRPO-Fast
 bash examples/flowgrpo_trainer/run_sd3_fast.sh
 ```

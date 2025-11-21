@@ -14,7 +14,7 @@
 # ============================================================================
 
 
-class DefaultComputeScore:
+class DefaultScorer:
     """Compute the score for a given solution based on the reward_fn or data source.
 
     Args:
@@ -45,7 +45,7 @@ class DefaultComputeScore:
         data_source,
         extra_info=None,
     ) -> None:
-        """Initialize once the scorer
+        """Initialize the scorer only once
         Args:
             data_source (str): The source dataset identifier which determines the scoring method.
             extra_info (dict, optional): Additional information that might be needed for scoring. Defaults to None.
@@ -71,12 +71,9 @@ class DefaultComputeScore:
                 # init OCR model scorer
                 self.scorer = ocr.PaddleOcrScorer()  # type: ignore
             else:
-                print(
-                    f"Unrecognized {data_source=}, use `jpeg-imcompressibility` as default."
+                raise NotImplementedError(
+                    f"reward_fn is not specified, and reward function is not implemented for {data_source=}"
                 )
-                from . import jpeg_imcompressibility
-
-                self.scorer = jpeg_imcompressibility.JpegImcompressibilityScorer()  # type: ignore
 
     def __call__(
         self,
@@ -86,7 +83,7 @@ class DefaultComputeScore:
         extra_info=None,
         **kwargs,
     ):
-        if self.scorer is None:
+        if self.scorer is None:  # Initialize scorer on the first call
             self.get_scorer(data_source, extra_info=extra_info)
         res = self.scorer(solution_str, ground_truth)
 
@@ -101,4 +98,4 @@ class DefaultComputeScore:
                 return [float(r) for r in res]
 
 
-__all__ = ["DefaultComputeScore"]
+__all__ = ["DefaultScorer"]

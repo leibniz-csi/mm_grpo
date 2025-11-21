@@ -31,7 +31,7 @@ from verl import DataProto
 from verl.utils.transferqueue_utils import tqbridge
 from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
-from ...utils.reward_score import DefaultComputeScore
+from ...utils.reward_score import DefaultScorer
 from ...workers.reward_manager import get_reward_manager_cls
 
 
@@ -153,13 +153,13 @@ def load_reward_manager(
             _concurrent_semaphore = sandbox_manager.Semaphore(
                 sandbox_config.get("max_concurrent", 64)
             )
-            final_compute_score = DefaultComputeScore(
+            final_compute_score = DefaultScorer(
                 sandbox_fusion_url=sandbox_url,
                 concurrent_semaphore=_concurrent_semaphore,
                 memory_limit_mb=memory_limit_mb,
             )
         else:
-            final_compute_score = DefaultComputeScore()
+            final_compute_score = DefaultScorer()
 
     # Instantiate and return the reward manager with the specified parameters
     return reward_manager_cls(
