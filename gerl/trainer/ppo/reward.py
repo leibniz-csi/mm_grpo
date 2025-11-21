@@ -29,8 +29,7 @@ import torch
 from omegaconf import DictConfig
 from verl import DataProto
 from verl.utils.transferqueue_utils import tqbridge
-from verl.workers.reward_manager.abstract import (AbstractRewardManager,
-                                                  RawRewardFn)
+from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
 from ...utils.reward_score import default_compute_score
 from ...workers.reward_manager import get_reward_manager_cls
