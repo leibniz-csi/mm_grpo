@@ -24,8 +24,8 @@ from .scorer import Scorer
 
 AVAILABLE_SCORERS = {
     "paddle-ocr": ("ocr", "PaddleOcrScorer"),
-    "jpeg-imcompressibility": ("jpeg_imcompressibility", "JpegImcompressibilityScorer"),
-    "qwenvl-ocr-vllm": ("vllm", "QwenVLOCRVLLMScorer"),
+    # "jpeg-imcompressibility": ("jpeg_imcompressibility", "JpegImcompressibilityScorer"),
+    "qwenvl-ocr-vllm": ("vllm", "QwenVLOcrVLLMScorer"),
     # "pickscore": ("pickscore", "PickScoreScorer"),
     # "qwenvl": ("qwenvl", "QwenVLScorer"),
     # "aesthetic": ("aesthetic", "AestheticScorer"),

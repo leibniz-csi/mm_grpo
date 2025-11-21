@@ -14,17 +14,8 @@
 # ============================================================================
 
 
-def default_compute_score(
-    data_source,
-    solution_str,
-    ground_truth,
-    extra_info=None,
-    sandbox_fusion_url=None,
-    concurrent_semaphore=None,
-    memory_limit_mb=None,
-    **kwargs,
-):
-    """Compute the score for a given solution based on the data source.
+class DefaultScorer:
+    """Compute the score for a given solution based on the reward_fn or data source.
 
     Args:
         data_source (str): The source dataset identifier which determines the scoring method.
@@ -33,49 +24,78 @@ def default_compute_score(
         extra_info (dict, optional): Additional information that might be needed for scoring. Defaults to None.
 
     Returns:
-        float: The computed score as a floating point number. If the result is a dictionary,
+        dict/float: The computed score as a floating point number. If the result is a dictionary,
                it returns the dictionary instead.
-
-    Raises:
-        NotImplementedError: If the reward function is not implemented for the given data source.
     """
-    reward_fn = extra_info.get("reward_fn", []) if extra_info else []
-    if len(reward_fn) > 0:
-        scorers_weight = [1 / len(reward_fn)] * len(
-            reward_fn
-        )  # TODO: TBD support custom weights
-        scorers = dict(zip(reward_fn, scorers_weight))
-        from . import multi
 
-        res = multi.compute_score(solution_str, ground_truth, scorers)
-    else:
-        print(
-            "reward_fn is not specified, use default reward function for each data_source."
-        )
-        if data_source in [
-            "ocr",
-        ]:
-            from . import ocr
+    def __init__(
+        self,
+        sandbox_fusion_url=None,
+        concurrent_semaphore=None,
+        memory_limit_mb=None,
+    ) -> None:
+        super().__init__()
+        self.scorer = None
+        self.sandbox_fusion_url = sandbox_fusion_url
+        self.concurrent_semaphore = concurrent_semaphore
+        self.memory_limit_mb = memory_limit_mb
 
-            res = ocr.compute_score(solution_str, ground_truth)
+    def get_scorer(
+        self,
+        data_source,
+        extra_info=None,
+    ) -> None:
+        """Initialize the scorer only once
+        Args:
+            data_source (str): The source dataset identifier which determines the scoring method.
+            extra_info (dict, optional): Additional information that might be needed for scoring. Defaults to None.
+        """
+        reward_fn = extra_info.get("reward_fn", []) if extra_info else []
+        if len(reward_fn) > 0:
+            scorers_weight = [1 / len(reward_fn)] * len(
+                reward_fn
+            )  # TODO: TBD support custom weights, now use equal weights
+            scorers = dict(zip(reward_fn, scorers_weight))
+            from . import multi
 
+            self.scorer = multi.MultiScorer(scorers)  # type: ignore
         else:
             print(
-                f"Unrecognized {data_source=}, use jpeg-imcompressibility as default."
+                "reward_fn is not specified, use default reward function for each data_source."
             )
-            from . import jpeg_imcompressibility
+            if data_source in [
+                "ocr",
+            ]:
+                from . import ocr
 
-            res = jpeg_imcompressibility.compute_score(solution_str, ground_truth)
+                # init OCR model scorer
+                self.scorer = ocr.PaddleOcrScorer()  # type: ignore
+            else:
+                raise NotImplementedError(
+                    f"reward_fn is not specified, and reward function is not implemented for {data_source=}"
+                )
 
-    if isinstance(res, dict):
-        return res
-    elif isinstance(res, int | float | bool):
-        return float(res)
-    elif isinstance(res, list):
-        if len(res) == 1:
-            return float(res[0])
-        else:
-            return [float(r) for r in res]
+    def __call__(
+        self,
+        data_source,
+        solution_str,
+        ground_truth,
+        extra_info=None,
+        **kwargs,
+    ):
+        if self.scorer is None:  # Initialize scorer on the first call
+            self.get_scorer(data_source, extra_info=extra_info)
+        res = self.scorer(solution_str, ground_truth)
+
+        if isinstance(res, dict):
+            return res
+        elif isinstance(res, int | float | bool):
+            return float(res)
+        elif isinstance(res, list):
+            if len(res) == 1:
+                return float(res[0])
+            else:
+                return [float(r) for r in res]
 
 
-__all__ = ["default_compute_score"]
+__all__ = ["DefaultScorer"]

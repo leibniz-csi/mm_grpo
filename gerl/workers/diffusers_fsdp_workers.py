@@ -795,7 +795,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         assert self._is_actor
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
-
         # Support all hardwares
         from contextlib import nullcontext
 

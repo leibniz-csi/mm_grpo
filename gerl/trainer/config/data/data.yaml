@@ -23,9 +23,10 @@ reward_fn_key: data_source
 # The data source name, default is "ocr"
 data_source: ocr
 
-# The list of reward functions used for the data, options: "paddle-ocr", "jpeg-imcompressibility",
-# support multiple reward functions. TODO: add weights?
-reward_fn: ["jpeg-imcompressibility"]
+# The list of reward functions used for the data.
+# Options: "paddle-ocr", "jpeg-imcompressibility", "qwenvl-ocr-vllm"
+# Support multiple reward functions. TODO: add weights?
+reward_fn: ["paddle-ocr"]
 
 # reward model type
 reward_model_style: model

@@ -19,7 +19,7 @@ import logging
 import os
 import re
 from io import BytesIO
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 import Levenshtein
 import numpy as np
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 
 class VLLMScorer(Scorer):
-    def __init__(self, base_url: Optional[str] = None):
+    def __init__(self, base_url: Optional[str] = None) -> None:
         # following https://github.com/openai/openai-python/issues/1254
         # we should use a single event loop for AsyncOpenAI call
         self._loop = asyncio.new_event_loop()
@@ -67,10 +67,11 @@ class VLLMScorer(Scorer):
         )
         return completion.choices[0].message.content
 
+    @torch.no_grad()
     def __call__(
         self,
         images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: Optional[List[str]] = None,
+        prompts: List[str],
     ) -> List[float]:
         raise NotImplementedError("This method should be implemented in subclasses.")
 
@@ -84,6 +85,7 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         self.model_path = os.environ.get("QWEN_VL_OCR_PATH", self._DEFAULT_MODEL)
         super().__init__(base_url=self.base_url)
 
+    @torch.no_grad()
     def __call__(
         self,
         images: Union[List[Image.Image], np.ndarray, torch.Tensor],
@@ -132,8 +134,6 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
     def calculate_score(output_text: List[str], prompts: List[str]) -> List[float]:
         scores = []
         for text, prompt in zip(output_text, prompts):
-            # assume the prompt is in the format: xxx display/show with "words" xxx
-            prompt = prompt.split('"')[1]
             # remove any nonvisible characters and convert to lowercase
             prompt = re.sub(r"\s+", "", prompt).lower()
             text = re.sub(r"\s+", "", text).lower()

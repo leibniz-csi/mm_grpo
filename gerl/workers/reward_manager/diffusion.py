@@ -20,7 +20,7 @@ import torch
 from verl.workers.reward_manager.abstract import AbstractRewardManager
 
 from ...protocol import DataProto
-from ...utils.reward_score import default_compute_score
+from ...utils.reward_score import DefaultScorer
 from .registry import register
 
 
@@ -42,14 +42,14 @@ class DiffusionRewardManager(AbstractRewardManager):
         Args:
             tokenizer: The tokenizer used to decode token IDs into text.
             num_examine: The number of batches of decoded responses to print to the console for debugging purpose.
-            compute_score: A function to compute the reward score. If None, `default_compute_score` will be used.
+            compute_score: A function/class to compute the reward score. If None, `DefaultScorer()` will be used.
             reward_fn_key: The key used to access the data source in the non-tensor batch data. Defaults to
                 "data_source".
             reward_fn: The name list of reward functions to compute the reward.
         """
         self.tokenizer = tokenizer  # Store the tokenizer for decoding token IDs
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
-        self.compute_score = compute_score or default_compute_score
+        self.compute_score = compute_score or DefaultScorer()
         self.reward_fn_key = (
             reward_fn_key  # Store the key for accessing the data source
         )
@@ -164,7 +164,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
         """
         self.tokenizer = tokenizer  # Store the tokenizer for decoding token IDs
         self.num_examine = num_examine  # the number of batches of decoded responses to print to the console
-        self.compute_score = compute_score or default_compute_score
+        self.compute_score = compute_score or DefaultScorer()
         self.reward_fn_key = reward_fn_key
         self.reward_fn = reward_fn
 

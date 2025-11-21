@@ -31,7 +31,7 @@ from verl import DataProto
 from verl.utils.transferqueue_utils import tqbridge
 from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
-from ...utils.reward_score import default_compute_score
+from ...utils.reward_score import DefaultScorer
 from ...workers.reward_manager import get_reward_manager_cls
 
 
@@ -139,8 +139,8 @@ def load_reward_manager(
     # diffusion: DiffusionRewardManager
     # Note(haibin.lin): For custom reward managers, please make sure they are imported and
     # registered via `gerl.workers.reward_manager.register`
-    # By default reward_manager is set to naive (NaiveRewardManager)
-    reward_manager_name = config.reward_model.get("reward_manager", "naive")
+    # By default reward_manager is set to diffusion-batch (DiffusionBatchRewardManager)
+    reward_manager_name = config.reward_model.get("reward_manager", "diffusion-batch")
     reward_manager_cls = get_reward_manager_cls(reward_manager_name)
 
     if compute_score is None:
@@ -153,14 +153,13 @@ def load_reward_manager(
             _concurrent_semaphore = sandbox_manager.Semaphore(
                 sandbox_config.get("max_concurrent", 64)
             )
-            final_compute_score = partial(
-                default_compute_score,
+            final_compute_score = DefaultScorer(
                 sandbox_fusion_url=sandbox_url,
                 concurrent_semaphore=_concurrent_semaphore,
                 memory_limit_mb=memory_limit_mb,
             )
         else:
-            final_compute_score = default_compute_score
+            final_compute_score = DefaultScorer()
 
     # Instantiate and return the reward manager with the specified parameters
     return reward_manager_cls(
