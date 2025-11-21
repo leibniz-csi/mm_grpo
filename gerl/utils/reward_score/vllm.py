@@ -40,7 +40,7 @@ class VLLMScorer(Scorer):
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
 
     async def async_process_queries(
-        self, queries: list[list[str]], model_path: str, base_url: str
+        self, queries: list[list[dict]], model_path: str, base_url: str
     ) -> List[str]:
         results = await asyncio.gather(
             *(
@@ -51,7 +51,7 @@ class VLLMScorer(Scorer):
         return results
 
     async def _async_query_openai(
-        self, query: list[str], model_path: str, base_url: str
+        self, query: list[dict], model_path: str, base_url: str
     ) -> str:
         completion = await self.aclient.chat.completions.create(
             model=model_path,
