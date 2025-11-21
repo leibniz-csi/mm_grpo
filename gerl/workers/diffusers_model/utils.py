@@ -48,5 +48,10 @@ def prepare_train_network(
         pipeline.text_encoder.to(device, dtype=dtype)
         pipeline.text_encoder_2.to(device, dtype=dtype)
         pipeline.text_encoder_3.to(device, dtype=dtype)
+        # set eval mode
+        pipeline.vae.eval()
+        pipeline.text_encoder.eval()
+        pipeline.text_encoder_2.eval()
+        pipeline.text_encoder_3.eval()
     else:
         raise NotImplementedError()
