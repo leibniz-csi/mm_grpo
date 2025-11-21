@@ -40,7 +40,7 @@ class VLLMScorer(Scorer):
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
 
     async def async_process_queries(
-        self, queries: list[list[Any]], model_path: str, base_url: Optional[str]
+        self, queries: list[list[dict]], model_path: str, base_url: str
     ) -> List[str]:
         results = await asyncio.gather(
             *(
@@ -51,7 +51,7 @@ class VLLMScorer(Scorer):
         return results
 
     async def _async_query_openai(
-        self, query: list[list[Any]], model_path: str, base_url: Optional[str]
+        self, query: list[dict], model_path: str, base_url: str
     ) -> str:
         completion = await self.aclient.chat.completions.create(
             model=model_path,
@@ -76,7 +76,7 @@ class VLLMScorer(Scorer):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
 
-class QwenVLOcrVLLMScorer(VLLMScorer):
+class QwenVLOCRVLLMScorer(VLLMScorer):
     _DEFAULT_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
     _task = "Please output only the text content from the image without any additional descriptions or formatting."
 
@@ -89,8 +89,13 @@ class QwenVLOcrVLLMScorer(VLLMScorer):
     def __call__(
         self,
         images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: List[str],
+        prompts: Optional[List[str]] = None,
     ) -> List[float]:
+        assert prompts is not None, "Prompts must be provided for OCR scoring."
+        assert self.base_url is not None, (
+            "Base URL for Qwen-VL OCR VLLM scorer must be provided."
+        )
+
         if isinstance(images, (np.ndarray, torch.Tensor)):
             if images.ndim == 3:
                 images = images.unsqueeze(0)
@@ -144,7 +149,7 @@ class QwenVLOcrVLLMScorer(VLLMScorer):
 
 
 def test_qwen_vl_ocr_vllm_scorer():
-    scorer = QwenVLOcrVLLMScorer("http://0.0.0.0:9529/v1")
+    scorer = QwenVLOCRVLLMScorer("http://0.0.0.0:9529/v1")
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
     prompts = ['a photo of displaying "OCR".'] * len(images)
     pil_images = [Image.open(img) for img in images]
