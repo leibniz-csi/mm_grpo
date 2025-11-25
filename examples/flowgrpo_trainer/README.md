@@ -199,7 +199,8 @@ python3 -m gerl.trainer.main_flowgrpo \
 | --- | --- | --- | --- |
 | SD3.5-M | Flow-GRPO | 1 | <img width=512 alt="val_reward_curve" src="https://github.com/user-attachments/assets/f8c3e0f7-ebc0-4b3a-b25b-c7e349feb69f" />|
 | SD3.5-M | Flow-GRPO-Fast | 1 | <img width=512 alt="val_reward_curve" src="https://github.com/user-attachments/assets/4289e040-a3a0-48d8-b2c3-a8d08f27baa4" />|
-| SD3.5-M | Flow-GRPO-Fast | 8 |
+| SD3.5-M | Flow-GRPO-Fast | 8 | <img width=512 src="https://github.com/user-attachments/assets/db1b84be-d258-441c-88af-8e86d82aa2a8" /> |
+
 
 - Some visualization comparison for Flow-GRPO-Fast:
 
