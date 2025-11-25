@@ -197,14 +197,14 @@ python3 -m gerl.trainer.main_flowgrpo \
 
 | model | RL alg. |  cards  | curve |
 | --- | --- | --- | --- |
-| SD3.5-M | Flow-GRPO | 1 |  |
-| SD3.5-M | Flow-GRPO-Fast | 1 | <img width=512 alt="sd35_m_paddle_ocr_fast_val_reward" src="https://github.com/user-attachments/assets/b5dabaa5-5e50-4724-ad45-ba7f585d93f8" /> |
+| SD3.5-M | Flow-GRPO | 1 | <img width=512 alt="val_reward_curve" src="https://github.com/user-attachments/assets/f8c3e0f7-ebc0-4b3a-b25b-c7e349feb69f" />|
+| SD3.5-M | Flow-GRPO-Fast | 1 | <img width=512 alt="val_reward_curve" src="https://github.com/user-attachments/assets/4289e040-a3a0-48d8-b2c3-a8d08f27baa4" />|
 | SD3.5-M | Flow-GRPO-Fast | 8 |
 
 - Some visualization comparison for Flow-GRPO-Fast:
 
 | model | RL alg. |  cards | prompt | rendering (before RL)| rendering (after RL)
 | --- | --- | --- | --- | --- | --- |
-| SD3.5-M | Flow-GRPO | 1  | `A high-fashion runway with a sleek, modern backdrop displaying "Spring Collection 2024". Models walk confidently on the catwalk, showcasing vibrant, floral prints and pastel tones, under soft, ambient lighting that enhances the fresh, spring vibe.` | Step 0: |  Step 40: |
-| SD3.5-M | Flow-GRPO-Fast | 1  | `A high-fashion runway with a sleek, modern backdrop displaying "Spring Collection 2024". Models walk confidently on the catwalk, showcasing vibrant, floral prints and pastel tones, under soft, ambient lighting that enhances the fresh, spring vibe.`|Step 0: <img src="https://github.com/user-attachments/assets/7cf01b78-b310-4473-9ab7-22f5eff97565" width=400> | Step 40: <img src="https://github.com/user-attachments/assets/b4fbc2e1-4da0-4d97-825b-e5abbab6ac76" width=400> |
-| SD3.5-M | Flow-GRPO-Fast | 8  | `A beautifully crafted birthday cake topper shaped like "30 Years Young", adorned with sparkly frosting and shimmering decorations, set against a backdrop of a cozy, candlelit birthday party.`| Step 0: | Step 97: |
+| SD3.5-M | Flow-GRPO | 1  | `A close-up of a sleek smartwatch on a wrist, the screen displaying "Step Goal Achieved" with a celebratory animation, set against a blurred cityscape at dusk, capturing the moment of accomplishment.` | Step 0: <img width=400 src="https://github.com/user-attachments/assets/d6b1cf69-b0d1-4ecb-92c5-c32fc4a8676c" />|  Step 141: <img width=400 src="https://github.com/user-attachments/assets/e4208ff7-2e49-4767-9578-320f12e4d4dd" />|
+| SD3.5-M | Flow-GRPO-Fast | 1  | `A high-fashion runway with a sleek, modern backdrop displaying "Spring Collection 2024". Models walk confidently on the catwalk, showcasing vibrant, floral prints and pastel tones, under soft, ambient lighting that enhances the fresh, spring vibe.`|Step 0: <img src="https://github.com/user-attachments/assets/7cf01b78-b310-4473-9ab7-22f5eff97565" width=400> | Step 104:  <img width=400 src="https://github.com/user-attachments/assets/6b02ef1c-3da7-44cd-9850-9114635dea4f" />|
+| SD3.5-M | Flow-GRPO-Fast | 8  | `A beautifully crafted birthday cake topper shaped like "30 Years Young", adorned with sparkly frosting and shimmering decorations, set against a backdrop of a cozy, candlelit birthday party.`| Step 0: <img width=400 src="https://github.com/user-attachments/assets/d1e5b85f-4b8c-4645-94e9-8841b64de8e7" />| Step 97: <img width=400 src="https://github.com/user-attachments/assets/51a15d07-6990-420a-a509-0e756b790e40" /> |
