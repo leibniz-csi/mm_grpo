@@ -2,7 +2,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     algorithm.adv_estimator=flow_grpo \
     data.train_files=$HOME/dataset/ocr/train.txt \
     data.val_files=$HOME/dataset/ocr/test.txt \
-    data.train_batch_size=32 \
+    data.train_batch_size=64 \
     data.val_max_samples=64 \
     data.max_prompt_length=128 \
     data.filter_overlong_prompts=False \
@@ -15,7 +15,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.actor.clip_ratio=1e-5 \
     actor_rollout_ref.actor.optim.lr=3e-4 \
     actor_rollout_ref.actor.optim.weight_decay=0.0001 \
-    actor_rollout_ref.actor.ppo_mini_batch_size=16 \
+    actor_rollout_ref.actor.ppo_mini_batch_size=32 \
     actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu=8 \
     actor_rollout_ref.actor.use_kl_loss=False \
     actor_rollout_ref.actor.kl_loss_coef=0 \
@@ -37,7 +37,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     trainer.logger='["console", "wandb"]' \
     trainer.project_name='flow_grpo' \
     trainer.experiment_name='sd35_m_ocr_fast' \
-    trainer.n_gpus_per_node=4 \
+    trainer.n_gpus_per_node=8 \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
     trainer.test_freq=5 \
