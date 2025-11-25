@@ -69,7 +69,7 @@ During training, denote paths in configs `data.train_files` and `data.val_files`
 <details open>
 <summary>Multi-card training</summary>
 
-We provide scipts for quick start:
+We provide scripts for quick start:
 ```bash
 # sd3 + Flow-GRPO
 bash examples/flowgrpo_trainer/run_sd3.sh
@@ -124,7 +124,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     trainer.nnodes=1 \
     trainer.save_freq=20 \
     trainer.test_freq=5 \
-    trainer.total_epochs=15 $@
+    trainer.total_epochs=3 $@
 ```
 
 </details>

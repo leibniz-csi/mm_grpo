@@ -70,7 +70,7 @@ During training, denote paths in configs `data.train_files` and `data.val_files`
 <details open>
 <summary>Multi-card training</summary>
 
-We provide scipts for quick start:
+We provide scripts for quick start:
 ```bash
 # sd3 + Flow-GRPO
 bash examples/flowgrpo_trainer/run_sd3.sh
@@ -188,9 +188,9 @@ python3 -m gerl.trainer.main_flowgrpo \
 
 | model | RL alg. |  cards | batch size | init lr | clip ratio | s/step |
 | --- | --- | --- | --- | --- | --- | --- |
-| SD3.5-M | Flow-GRPO | 1 | 8 | 3-e4 | 1e-4 | 84 |
-| SD3.5-M | Flow-GRPO-Fast | 1 | 8 | 3-e4 | 1e-5 | 58 |
-| SD3.5-M | Flow-GRPO-Fast | 8 | 64 | 3-e4 | 1e-5 | 291 |
+| SD3.5-M | Flow-GRPO | 1 | 8 | 3e-4 | 1e-4 | 84 |
+| SD3.5-M | Flow-GRPO-Fast | 1 | 8 | 3e-4 | 1e-5 | 58 |
+| SD3.5-M | Flow-GRPO-Fast | 8 | 64 | 3e-4 | 1e-5 | 291 |
 
 - Validation reward curve:
 

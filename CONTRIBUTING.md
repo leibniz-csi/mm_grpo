@@ -28,7 +28,7 @@ If you want to submit a pull request to our repository, here are steps to set up
   git remote add upstream git@github.com:leibniz-csi/mm_grpo.git
   ```
 
-3. Install your loacal copy into your local environment. You can refer to [Installation](README.md#installation).
+3. Install your local copy into your local environment. You can refer to [Installation](README.md#installation).
 
 4. Create a branch for local development
   ```bash
