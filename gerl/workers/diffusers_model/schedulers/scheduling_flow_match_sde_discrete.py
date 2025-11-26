@@ -109,6 +109,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
 
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
+        model_output = model_output.to(torch.float32)
         if prev_sample is not None:
             prev_sample = prev_sample.to(torch.float32)
 
@@ -148,6 +149,11 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         prev_sample: Optional[torch.Tensor] = None,
         sde_type: Literal["cps", "sde"] = "sde",
     ):
+        # check inputs
+        assert sample.dtype == model_output.dtype == torch.float32
+        if prev_sample is not None:
+            assert prev_sample.dtype == torch.float32
+
         if per_token_timesteps is not None:
             raise NotImplementedError(
                 "per_token_timesteps is not supported yet for FlowMatchSDEDiscreteScheduler."

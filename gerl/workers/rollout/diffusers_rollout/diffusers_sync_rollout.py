@@ -16,6 +16,7 @@
 Rollout with diffusers models.
 """
 
+import contextlib
 import logging
 import os
 from typing import TYPE_CHECKING, Generator, Optional
@@ -57,7 +58,11 @@ class DiffusersSyncRollout(BaseRollout):
         if rollout_module is None:
             raise ValueError("rollout_module must be provided for DiffusersSyncRollout")
         self.rollout_module = rollout_module
-        self.dtype = PrecisionType.to_dtype(config.dtype)
+
+        if config.dtype is None:
+            self.dtype = None
+        else:
+            self.dtype = PrecisionType.to_dtype(config.dtype)
 
         self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
 
@@ -78,6 +83,12 @@ class DiffusersSyncRollout(BaseRollout):
         generated_input_texts = []
         generated_results = []
 
+        def autocast():
+            if self.dtype is not None:
+                return torch.autocast(device_type=get_device_name(), dtype=self.dtype)
+            else:
+                return contextlib.nullcontext()
+
         seed = prompts.meta_info.get("seed", None)
         if seed is not None:
             generator = torch.Generator(device=get_device_name()).manual_seed(seed)
@@ -94,7 +105,7 @@ class DiffusersSyncRollout(BaseRollout):
                 "num_inference_steps", self.config.num_inference_steps
             )
 
-            with torch.autocast(device_type=get_device_name(), dtype=self.dtype):
+            with autocast():
                 output = self.rollout_module(
                     input_texts,
                     height=self.config.image_height,

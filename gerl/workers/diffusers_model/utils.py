@@ -44,7 +44,7 @@ def prepare_train_network(
         pipeline.text_encoder_3.requires_grad_(False)
         pipeline.transformer.requires_grad_(not is_lora)
         # Move vae and text_encoder to device and cast to inference_dtype
-        pipeline.vae.to(device, dtype=dtype)
+        pipeline.vae.to(device)
         pipeline.text_encoder.to(device, dtype=dtype)
         pipeline.text_encoder_2.to(device, dtype=dtype)
         pipeline.text_encoder_3.to(device, dtype=dtype)

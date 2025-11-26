@@ -39,9 +39,8 @@ sde_window_size: null
 # SDE window range
 sde_window_range: null
 
-# for diffusers rollout
-# Rollout model parameters type. Align with actor model's FSDP/Megatron type.
-dtype: bfloat16
+# Rollout dtype
+dtype: null
 
 # TP size for rollout
 tensor_model_parallel_size: 1
