@@ -16,6 +16,12 @@
 
 **Requirements**
 
+We tested with the following machines:
+| GPU | Driver | CUDA |
+|--- | --- | --- |
+| A100 (80GB) | 530.30.02 | 12.1 |
+| H800 (80GB) | 535.161.08 | 12.2 |
+
 Install required packages:
 - torch, datasets, diffusers, transformers, peft, flashinfer-python
 - [verl](https://verl.readthedocs.io/en/latest/start/install.html) (>0.6.1)
@@ -67,20 +73,20 @@ During training, denote paths in configs `data.train_files` and `data.val_files`
 
 2. Start Training
 
-<details open>
-<summary>Multi-card training</summary>
-
 We provide scripts for quick start:
 ```bash
-# sd3 + Flow-GRPO
+# SD3 + Flow-GRPO
 bash examples/flowgrpo_trainer/run_sd3.sh
 
-# sd3 + Flow-GRPO-Fast
+# SD3 + Flow-GRPO-Fast
 bash examples/flowgrpo_trainer/run_sd3_fast.sh
 ```
 
+<details>
+<summary>Multi-card training</summary>
 
-Example of running on 8 GPUs (at least 60GB memory/card suggested) with Flow-GRPO-Fast:
+
+Example of running on 8 GPUs (at least 60GB memory/card suggested) with Flow-GRPO-Fast and LoRA:
 ```bash
 python3 -m gerl.trainer.main_flowgrpo \
     algorithm.adv_estimator=flow_grpo \
@@ -133,7 +139,7 @@ python3 -m gerl.trainer.main_flowgrpo \
 <details>
 <summary>Single-card training</summary>
 
-Example of running on a single GPU (60GB memory suggested) with Flow-GRPO-Fast:
+Example of running on a single GPU (60GB memory suggested) with Flow-GRPO-Fast and LoRA:
 ```bash
 python3 -m gerl.trainer.main_flowgrpo \
     algorithm.adv_estimator=flow_grpo \

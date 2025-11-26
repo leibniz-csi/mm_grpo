@@ -66,20 +66,20 @@ During training, denote paths in configs `data.train_files` and `data.val_files`
 
 2. Start Training
 
-<details open>
-<summary>Multi-card training</summary>
-
 We provide scripts for quick start:
 ```bash
-# sd3 + Flow-GRPO
+# SD3 + Flow-GRPO
 bash examples/flowgrpo_trainer/run_sd3.sh
 
-# sd3 + Flow-GRPO-Fast
+# SD3 + Flow-GRPO-Fast
 bash examples/flowgrpo_trainer/run_sd3_fast.sh
 ```
 
+<details>
+<summary>Multi-card training</summary>
 
-Example of running on 8 GPUs with Flow-GRPO-Fast:
+
+Example of running on 8 GPUs with Flow-GRPO-Fast and LoRA:
 ```bash
 python3 -m gerl.trainer.main_flowgrpo \
     algorithm.adv_estimator=flow_grpo \
@@ -132,7 +132,7 @@ python3 -m gerl.trainer.main_flowgrpo \
 <details>
 <summary>Single-card training</summary>
 
-Example of running on a single GPU (60GB memory suggested) with Flow-GRPO-Fast:
+Example of running on a single GPU (60GB memory suggested) with Flow-GRPO-Fast and LoRA:
 ```bash
 python3 -m gerl.trainer.main_flowgrpo \
     algorithm.adv_estimator=flow_grpo \
