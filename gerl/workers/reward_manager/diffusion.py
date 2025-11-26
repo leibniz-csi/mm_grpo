@@ -60,6 +60,7 @@ class DiffusionRewardManager(AbstractRewardManager):
     ) -> torch.Tensor | dict[str, Any]:
         """We will expand this function gradually based on the available datasets"""
 
+        # TODO: not supported yet.
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if "rm_scores" in data.batch.keys():
             if return_dict:
@@ -173,6 +174,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
     ) -> torch.Tensor | dict[str, Any]:
         """We will expand this function gradually based on the available datasets"""
 
+        # TODO: not supported yet.
         # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if "rm_scores" in data.batch.keys():
             if return_dict:
@@ -191,7 +193,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
 
         # get batch reward scores
         data_sources = data.non_tensor_batch[self.reward_fn_key]
-        prompts = data.non_tensor_batch["prompt"]
+        prompts = data.non_tensor_batch["prompt"]  # print use
         response_images = data.batch["responses"]
         ground_truths = [
             item.non_tensor_batch["reward_model"].get(
@@ -201,8 +203,10 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
         ]
         rollout_reward_scores = data.non_tensor_batch.get(
             "reward_scores", [{} for _ in range(len(data))]
-        )
-        extras = data.non_tensor_batch.get("extra_info", [{} for _ in range(len(data))])
+        )  # useless for now
+        extras = data.non_tensor_batch.get(
+            "extra_info", [{} for _ in range(len(data))]
+        )  # useless for now
         for i in range(len(data)):
             extras[i]["rollout_reward_scores"] = rollout_reward_scores[i]
             extras[i]["reward_fn"] = self.reward_fn
