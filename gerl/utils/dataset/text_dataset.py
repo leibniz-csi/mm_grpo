@@ -71,9 +71,10 @@ class TextPromptDataset(Dataset):
 
         if self.truncation == "error":
             for prompt in self.prompts:
-                raise RuntimeError(
-                    f"Prompt length {len(prompt)} is longer than {self.max_prompt_length}."
-                )
+                if len(prompt) > self.max_prompt_length:
+                    raise RuntimeError(
+                        f"Prompt length {len(prompt)} is longer than {self.max_prompt_length}."
+                    )
 
         if self.filter_overlong_prompts:
             self.prompts = [x for x in self.prompts if len(x) <= self.max_prompt_length]

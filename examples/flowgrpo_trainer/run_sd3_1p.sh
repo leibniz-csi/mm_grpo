@@ -4,8 +4,8 @@ python3 -m gerl.trainer.main_flowgrpo \
     data.val_files=$HOME/dataset/ocr/test.txt \
     data.train_batch_size=8 \
     data.val_max_samples=32 \
-    data.max_prompt_length=128 \
-    data.filter_overlong_prompts=False \
+    data.max_prompt_length=512 \
+    data.truncation=error \
     data.data_source=ocr \
     data.reward_fn='["paddle-ocr"]' \
     actor_rollout_ref.model.path=stabilityai/stable-diffusion-3.5-medium \
