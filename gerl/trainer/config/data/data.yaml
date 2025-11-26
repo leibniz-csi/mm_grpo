@@ -24,7 +24,7 @@ reward_fn_key: data_source
 data_source: ocr
 
 # The list of reward functions used for the data.
-# Options: "paddle-ocr", "jpeg-imcompressibility", "qwenvl-ocr-vllm"
+# Options: "paddle-ocr", "qwenvl-ocr-vllm"
 # Support multiple reward functions. TODO: add weights?
 reward_fn: ["paddle-ocr"]
 
