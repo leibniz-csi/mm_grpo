@@ -13,6 +13,4 @@
 # limitations under the License.
 # ============================================================================
 from .patch import inject_SDE_scheduler_into_pipeline
-from .utils import prepare_train_network
-
-__all__ = ["prepare_train_network", "inject_SDE_scheduler_into_pipeline"]
+from .utils import *

@@ -13,4 +13,4 @@
 # limitations under the License.
 # ============================================================================
 
-from .diffusers_sync_rollout import DiffusersSyncRollout
+from .diffusers_rollout import *

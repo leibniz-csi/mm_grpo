@@ -42,9 +42,11 @@ sde_window_size: null
 # SDE window range
 sde_window_range: null
 
-# for diffusers rollout
-# Rollout model parameters type. Align with actor model's FSDP/Megatron type.
+# Rollout dtype
 dtype: bfloat16
+
+# Whether to free cache engine during trainer mode to save GPU memory.
+free_cache_engine: True
 
 # TP size for rollout
 tensor_model_parallel_size: 1

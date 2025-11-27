@@ -154,6 +154,8 @@ def compute_flow_grpo_outcome_advantage(
             small value to avoid division by zero
         norm_adv_by_std_in_grpo: `(bool)`
             whether to scale the GRPO advantage
+        global_std: `(bool)`
+            whether to use global std for advantage normalization
         config: `(Optional[DictConfig])`
             algorithm configuration object
 

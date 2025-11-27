@@ -27,18 +27,27 @@ import torch
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
+from verl.utils.fs import copy_to_local
 from verl.utils.profiler import GPUMemoryLogger
+from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.torch_dtypes import PrecisionType
-from verl.workers.rollout.base import BaseRollout
 
 from ....protocol import DataProto
-from ....trainer.ppo.reward import compute_reward_async
+from ....utils.lora import select_lora_modules
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
+from ...diffusers_model import (
+    inject_SDE_scheduler_into_pipeline,
+    load_to_device,
+    prepare_pipeline,
+)
+from ..base import BaseRollout
+from .utils import get_negative_prompt_embedding
+from ....trainer.ppo.reward import compute_reward_async
 
 if TYPE_CHECKING:
     from diffusers import DiffusionPipeline
 
-__all__ = ["DiffusersSyncRollout"]
+__all__ = ["DiffusersSyncRollout", "DiffusersAsyncRollout"]
 
 
 logger = logging.getLogger(__file__)
@@ -51,18 +60,59 @@ class DiffusersSyncRollout(BaseRollout):
         config: DiffusionRolloutConfig,
         model_config: DiffusersModelConfig,
         device_mesh: DeviceMesh,
-        rollout_module: Optional["DiffusionPipeline"] = None,
     ):
         super().__init__(config, model_config, device_mesh)
-        self.config = config
-        self.model_config = model_config
-        self.device_mesh = device_mesh
-        if rollout_module is None:
-            raise ValueError("rollout_module must be provided for DiffusersSyncRollout")
-        self.rollout_module = rollout_module
-        self.dtype = PrecisionType.to_dtype(config.dtype)
+        self.dtype = PrecisionType.to_dtype(self.config.dtype)
 
+        self.pipeline = self.init_diffusion_pipeline(self.dtype)
         self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
+
+    def init_diffusion_pipeline(self, dtype) -> "DiffusionPipeline":
+        from diffusers import DiffusionPipeline
+
+        local_path = copy_to_local(
+            self.model_config.path, use_shm=self.model_config.use_shm
+        )
+        pipeline = DiffusionPipeline.from_pretrained(local_path)
+        pipeline.set_progress_bar_config(disable=True)
+        inject_SDE_scheduler_into_pipeline(
+            pipeline, pretrained_model_name_or_path=local_path
+        )
+        prepare_pipeline(pipeline, dtype)
+
+        if self.model_config.lora_rank > 0:
+            self.lora_config = self.inject_lora(pipeline)
+        else:
+            self.lora_config = None
+
+        if not self.config.free_cache_engine:
+            load_to_device(pipeline, get_device_name())
+        return pipeline
+
+    def inject_lora(self, pipeline: "DiffusionPipeline"):
+        from peft import LoraConfig, get_peft_model
+
+        assert self.model_config.target_modules is not None
+
+        # Convert config to regular Python types before creating PEFT model
+        lora_config = {
+            "r": self.model_config.lora_rank,
+            "lora_alpha": self.model_config.lora_alpha,
+            "init_lora_weights": self.model_config.lora_init_weights,
+            "target_modules": convert_to_regular_types(
+                select_lora_modules(
+                    model_name=os.path.basename(self.model_config.path),
+                    target_modules=self.model_config.target_modules,
+                )
+            ),
+            "exclude_modules": convert_to_regular_types(
+                self.model_config.exclude_modules
+            ),
+            "bias": "none",
+        }
+        lora_config = LoraConfig(**lora_config)
+        pipeline.transformer = get_peft_model(pipeline.transformer, lora_config)
+        return lora_config
 
     @GPUMemoryLogger(role="diffusers rollout", logger=logger)
     @torch.no_grad()
@@ -76,7 +126,6 @@ class DiffusersSyncRollout(BaseRollout):
             "negative_pooled_prompt_embeds"
         ].to(get_device_name())
 
-        self.rollout_module.transformer.eval()
         micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
         generated_input_texts = []
         generated_results = []
@@ -97,27 +146,26 @@ class DiffusersSyncRollout(BaseRollout):
                 "num_inference_steps", self.config.num_inference_steps
             )
 
-            with torch.autocast(device_type=get_device_name(), dtype=self.dtype):
-                output = self.rollout_module(
-                    input_texts,
-                    height=self.config.image_height,
-                    width=self.config.image_width,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=self.config.guidance_scale,
-                    generator=generator,
-                    max_sequence_length=self.config.prompt_length,
-                    negative_prompt_embeds=negative_prompt_embeds.repeat(
-                        len(input_texts), 1, 1
-                    ),
-                    negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
-                        len(input_texts), 1
-                    ),
-                    output_type="pt",
-                    noise_level=noise_level,
-                    sde_window_size=self.config.sde_window_size,
-                    sde_window_range=self.config.sde_window_range,
-                    sde_type=self.config.sde_type,
-                )
+            output = self.pipeline(
+                input_texts,
+                height=self.config.image_height,
+                width=self.config.image_width,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=self.config.guidance_scale,
+                generator=generator,
+                max_sequence_length=self.config.prompt_length,
+                negative_prompt_embeds=negative_prompt_embeds.repeat(
+                    len(input_texts), 1, 1
+                ),
+                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
+                    len(input_texts), 1
+                ),
+                output_type="pt",
+                noise_level=noise_level,
+                sde_window_size=self.config.sde_window_size,
+                sde_window_range=self.config.sde_window_range,
+                sde_type=self.config.sde_type,
+            )
 
             result = TensorDict(
                 {
@@ -163,7 +211,6 @@ class DiffusersSyncRollout(BaseRollout):
             "negative_pooled_prompt_embeds"
         ].to(get_device_name())
 
-        self.rollout_module.transformer.eval()
         micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
         generated_input_texts = []
         generated_results = []
@@ -187,27 +234,26 @@ class DiffusersSyncRollout(BaseRollout):
                 "num_inference_steps", self.config.num_inference_steps
             )
 
-            with torch.autocast(device_type=get_device_name(), dtype=self.dtype):
-                output = self.rollout_module(
-                    input_texts,
-                    height=self.config.image_height,
-                    width=self.config.image_width,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=self.config.guidance_scale,
-                    generator=generator,
-                    max_sequence_length=self.config.prompt_length,
-                    negative_prompt_embeds=negative_prompt_embeds.repeat(
-                        len(input_texts), 1, 1
-                    ),
-                    negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
-                        len(input_texts), 1
-                    ),
-                    output_type="pt",
-                    noise_level=noise_level,
-                    sde_window_size=self.config.sde_window_size,
-                    sde_window_range=self.config.sde_window_range,
-                    sde_type=self.config.sde_type,
-                )
+            output = self.pipeline(
+                input_texts,
+                height=self.config.image_height,
+                width=self.config.image_width,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=self.config.guidance_scale,
+                generator=generator,
+                max_sequence_length=self.config.prompt_length,
+                negative_prompt_embeds=negative_prompt_embeds.repeat(
+                    len(input_texts), 1, 1
+                ),
+                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
+                    len(input_texts), 1
+                ),
+                output_type="pt",
+                noise_level=noise_level,
+                sde_window_size=self.config.sde_window_size,
+                sde_window_range=self.config.sde_window_range,
+                sde_type=self.config.sde_type,
+            )
 
             result = TensorDict(
                 {
@@ -263,27 +309,19 @@ class DiffusersSyncRollout(BaseRollout):
 
         return result
 
-    def cache_prompt_embeds(self, negative_prompt: str = "") -> torch.Tensor:
-        # TODO (Mike): for stable diffusion 3 only now, need to generalize later
-        prompt_embeds, _, pooled_prompt_embeds, _ = self.rollout_module.encode_prompt(
-            negative_prompt,
-            negative_prompt,
-            negative_prompt,
-            do_classifier_free_guidance=False,
+    def cache_prompt_embeds(
+        self, negative_prompt: str = ""
+    ) -> dict[str, torch.FloatTensor]:
+        embedding = get_negative_prompt_embedding(
+            self.pipeline,
+            negative_prompt=negative_prompt,
             max_sequence_length=self.config.prompt_length,
         )
-        return {
-            "negative_prompt_embeds": prompt_embeds.to("cpu"),
-            "negative_pooled_prompt_embeds": pooled_prompt_embeds.to("cpu"),
-        }
+        return {k: v.to("cpu") for k, v in embedding.items()}
 
-    async def resume(self, tags: list[str]):
-        """Resume rollout weights or kv cache in GPU memory.
-
-        Args:
-            tags: weights or kv_cache.
-        """
-        pass
+    async def resume(self):
+        """Resume rollout weights in GPU memory."""
+        load_to_device(self.pipeline, get_device_name())
 
     async def update_weights(
         self,
@@ -295,8 +333,30 @@ class DiffusersSyncRollout(BaseRollout):
         Args:
             weights: A generator that yields the name of the weight tensor and the tensor itself.
         """
-        pass
+        if self.model_config.lora_rank > 0:
+            return self.update_lora_weights(weights)
+        else:
+            raise NotImplementedError("Only LoRA weight update is supported now.")
 
     async def release(self):
-        """Release weights and kv cache in GPU memory."""
-        pass
+        """Release rollout weights in GPU memory."""
+        load_to_device(self.pipeline, "cpu")
+
+    def update_lora_weights(
+        self,
+        weights: Generator[tuple[str, torch.Tensor], None, None],
+    ):
+        """Update the LoRA weights of the rollout model.
+
+        Args:
+            weights: A generator that yields the name of the weight tensor and the tensor itself.
+        """
+        from peft import set_peft_model_state_dict
+
+        set_peft_model_state_dict(self.pipeline.transformer, dict(weights))
+
+
+class DiffusersAsyncRollout(DiffusersSyncRollout):
+    def __init__(self, config, model_config, device_mesh):
+        super().__init__(config, model_config, device_mesh)
+        raise NotImplementedError("DiffusersAsyncRollout is not implemented yet.")

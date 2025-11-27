@@ -148,6 +148,11 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         prev_sample: Optional[torch.Tensor] = None,
         sde_type: Literal["cps", "sde"] = "sde",
     ):
+        # check inputs
+        assert sample.dtype == torch.float32
+        if prev_sample is not None:
+            assert prev_sample.dtype == torch.float32
+
         if per_token_timesteps is not None:
             raise NotImplementedError(
                 "per_token_timesteps is not supported yet for FlowMatchSDEDiscreteScheduler."

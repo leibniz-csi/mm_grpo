@@ -14,8 +14,66 @@
 # ============================================================================
 
 import importlib
+from abc import ABC, abstractmethod
+from typing import Generator
 
-from verl.workers.rollout.base import BaseRollout
+import torch
+from torch.distributed.device_mesh import DeviceMesh
+from verl import DataProto
+from verl.utils.config import omega_conf_to_dataclass
+
+from ...workers.config import DiffusersModelConfig, DiffusionRolloutConfig
+
+__all__ = ["BaseRollout"]
+
+
+class BaseRollout(ABC):
+    """Base class for rollout."""
+
+    def __init__(
+        self,
+        config: DiffusionRolloutConfig,
+        model_config: DiffusersModelConfig,
+        device_mesh: DeviceMesh,
+    ):
+        self.config: DiffusionRolloutConfig = omega_conf_to_dataclass(config)
+        self.model_config: DiffusersModelConfig = omega_conf_to_dataclass(model_config)
+        self.device_mesh = device_mesh
+
+    @abstractmethod
+    async def resume(self):
+        """Resume rollout weights in GPU memory."""
+        pass
+
+    @abstractmethod
+    async def update_weights(
+        self,
+        weights: Generator[tuple[str, torch.Tensor], None, None],
+        **kwargs,
+    ):
+        """Update the weights of the rollout model.
+
+        Args:
+            weights: A generator that yields the name of the weight tensor and the tensor itself.
+        """
+        pass
+
+    @abstractmethod
+    async def release(self):
+        """Release weights and kv cache in GPU memory."""
+        pass
+
+    def generate_sequences(self, prompts: DataProto) -> DataProto:
+        """Batch generate sequences in sync mode.
+
+        Args:
+            prompts: The input prompts.
+
+        Returns:
+            The output sequences.
+        """
+        raise NotImplementedError
+
 
 _ROLLOUT_REGISTRY = {
     (

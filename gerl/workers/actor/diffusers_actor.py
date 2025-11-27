@@ -37,7 +37,7 @@ from ...trainer.ppo.core_algos import get_policy_loss_fn, kl_penalty
 from ..config import DiffusionFSDPActorConfig
 
 if TYPE_CHECKING:
-    from diffusers import DiffusionPipeline
+    from diffusers.schedulers.scheduling_utils import SchedulerMixin
 
 __all__ = ["DiffusersPPOActor"]
 
@@ -51,7 +51,7 @@ class DiffusersPPOActor(BasePPOActor):
     Args:
         config (DiffusionActorConfig): Configuration for the actor
         actor_module (nn.Module): The actor module
-        pipeline (DiffusionPipeline): The diffusion pipeline
+        scheduler (SchedulerMixin): The scheduler for diffusion process
         actor_optimizer (Optional[torch.optim.Optimizer], optional): The optimizer for the actor.
             When None, it is Reference Policy. Defaults to None.
     """
@@ -60,14 +60,17 @@ class DiffusersPPOActor(BasePPOActor):
         self,
         config: DiffusionFSDPActorConfig,
         actor_module: nn.Module,
-        pipeline: "DiffusionPipeline",
+        scheduler: "SchedulerMixin",
         actor_optimizer: Optional[torch.optim.Optimizer] = None,
     ):
         """When optimizer is None, it is Reference Policy"""
         super().__init__(config)
         self.actor_module = actor_module
         self.actor_optimizer = actor_optimizer
-        self.scheduler = pipeline.scheduler
+        self.scheduler = scheduler
+        self.scheduler.set_timesteps(
+            config.num_inference_steps, device=get_device_name()
+        )
         self.device_name = get_device_name()
         self.param_dtype = PrecisionType.to_dtype(
             self.config.fsdp_config.get("dtype", "bfloat16")
@@ -75,7 +78,7 @@ class DiffusersPPOActor(BasePPOActor):
         if self.param_dtype == torch.float16:
             from torch.distributed.fsdp.sharded_grad_scaler import ShardedGradScaler
 
-            self.scaler = ShardedGradScaler(growth_interval=400)
+            self.scaler = ShardedGradScaler(growth_interval=400, init_scale=2**24)
         else:
             self.scaler = None
 
@@ -87,49 +90,46 @@ class DiffusersPPOActor(BasePPOActor):
             log_probs: # (bs, )
         """
 
-        with torch.autocast(device_type=self.device_name, dtype=self.param_dtype):
-            latents = micro_batch["latents"]
-            timesteps = micro_batch["timesteps"]
-            prompt_embeds = micro_batch["prompt_embeds"]
-            pooled_prompt_embeds = micro_batch["pooled_prompt_embeds"]
-            negative_prompt_embeds = micro_batch["negative_prompt_embeds"]
-            negative_pooled_prompt_embeds = micro_batch["negative_pooled_prompt_embeds"]
+        latents = micro_batch["latents"]
+        timesteps = micro_batch["timesteps"]
+        prompt_embeds = micro_batch["prompt_embeds"]
+        pooled_prompt_embeds = micro_batch["pooled_prompt_embeds"]
+        negative_prompt_embeds = micro_batch["negative_prompt_embeds"]
+        negative_pooled_prompt_embeds = micro_batch["negative_pooled_prompt_embeds"]
 
-            if self.config.guidance_scale > 1.0:
-                noise_pred = self.actor_module(
-                    hidden_states=torch.cat([latents[:, step]] * 2),
-                    timestep=torch.cat([timesteps[:, step]] * 2),
-                    encoder_hidden_states=torch.cat(
-                        [negative_prompt_embeds, prompt_embeds], dim=0
-                    ),
-                    pooled_projections=torch.cat(
-                        [negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0
-                    ),
-                    return_dict=False,
-                )[0]
-                noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
-                noise_pred = noise_pred_uncond + self.config.guidance_scale * (
-                    noise_pred_text - noise_pred_uncond
-                )
-            else:
-                noise_pred = self.actor_module(
-                    hidden_states=latents[:, step],
-                    timestep=timesteps[:, step],
-                    encoder_hidden_states=prompt_embeds,
-                    pooled_projections=pooled_prompt_embeds,
-                    return_dict=False,
-                )[0]
-
-            _, log_prob, prev_sample_mean, std_dev_t = (
-                self.scheduler.sample_previous_step(
-                    sample=latents[:, step],
-                    model_output=noise_pred.float(),
-                    timestep=timesteps[:, step],
-                    noise_level=self.config.noise_level,
-                    prev_sample=latents[:, step + 1].float(),
-                    sde_type=self.config.sde_type,
-                )
+        if self.config.guidance_scale > 1.0:
+            noise_pred = self.actor_module(
+                hidden_states=torch.cat([latents[:, step]] * 2),
+                timestep=torch.cat([timesteps[:, step]] * 2),
+                encoder_hidden_states=torch.cat(
+                    [negative_prompt_embeds, prompt_embeds], dim=0
+                ),
+                pooled_projections=torch.cat(
+                    [negative_pooled_prompt_embeds, pooled_prompt_embeds], dim=0
+                ),
+                return_dict=False,
+            )[0]
+            noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
+            noise_pred = noise_pred_uncond + self.config.guidance_scale * (
+                noise_pred_text - noise_pred_uncond
             )
+        else:
+            noise_pred = self.actor_module(
+                hidden_states=latents[:, step],
+                timestep=timesteps[:, step],
+                encoder_hidden_states=prompt_embeds,
+                pooled_projections=pooled_prompt_embeds,
+                return_dict=False,
+            )[0]
+
+        _, log_prob, prev_sample_mean, std_dev_t = self.scheduler.sample_previous_step(
+            sample=latents[:, step].float(),
+            model_output=noise_pred,
+            timestep=timesteps[:, step],
+            noise_level=self.config.noise_level,
+            prev_sample=latents[:, step + 1].float(),
+            sde_type=self.config.sde_type,
+        )
 
         return log_prob, prev_sample_mean, std_dev_t
 

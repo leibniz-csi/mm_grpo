@@ -86,6 +86,7 @@ class DiffusionActorConfig(BaseConfig):
     guidance_scale: float = 4.5
     noise_level: float = 0.7
     sde_type: Literal["sde", "cps"] = "sde"
+    num_inference_steps: int = 10
 
     def __post_init__(self):
         """Validate actor configuration parameters."""
