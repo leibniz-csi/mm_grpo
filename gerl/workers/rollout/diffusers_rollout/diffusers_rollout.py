@@ -236,4 +236,6 @@ class DiffusersSyncRollout(BaseRollout):
 
 
 class DiffusersAsyncRollout(DiffusersSyncRollout):
-    raise NotImplementedError("DiffusersAsyncRollout is not implemented yet.")
+    def __init__(self, config, model_config, device_mesh):
+        super().__init__(config, model_config, device_mesh)
+        raise NotImplementedError("DiffusersAsyncRollout is not implemented yet.")
