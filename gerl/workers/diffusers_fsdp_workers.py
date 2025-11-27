@@ -36,6 +36,7 @@ from torch.distributed.fsdp.api import (
     ShardedStateDictConfig,
     StateDictType,
 )
+from torch.distributed.tensor import DTensor
 from verl.single_controller.base import Worker
 from verl.single_controller.base.decorator import (
     Dispatch,
@@ -55,6 +56,7 @@ from verl.utils.fsdp_utils import (
     CPUOffloadPolicy,
     MixedPrecisionPolicy,
     apply_fsdp2,
+    collect_lora_params,
     fsdp2_load_full_state_dict,
     fsdp_version,
     get_fsdp_wrap_policy,
@@ -228,7 +230,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                 f"ppo_mini_batch_size {self.config.actor.ppo_mini_batch_size} should be larger than 0 after "
                 f"normalization"
             )
-
+            # micro bsz
             assert (
                 self.config.actor.ppo_mini_batch_size
                 % self.config.actor.ppo_micro_batch_size_per_gpu
@@ -251,20 +253,18 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         model_path,
         fsdp_config: FSDPEngineConfig,
         optim_config,
+        override_model_config,
         use_fused_kernels=False,
         enable_gradient_checkpointing=False,
         role="actor",
         enable_activation_offload=False,
     ):
-        from diffusers import DiffusionPipeline, ModelMixin
+        from diffusers.models.transformers import SD3Transformer2DModel
         from torch.distributed.fsdp import CPUOffload, MixedPrecision
         from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
 
-        from .diffusers_model import (
-            inject_SDE_scheduler_into_pipeline,
-            prepare_train_network,
-        )
+        from .diffusers_model.schedulers import FlowMatchSDEDiscreteScheduler
 
         assert role in ["actor", "ref"]
 
@@ -276,7 +276,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             torch_dtype = torch.float32 if self._is_actor else torch.bfloat16
         else:
             torch_dtype = PrecisionType.to_dtype(torch_dtype)
-        device = get_device_name()
 
         init_context = get_init_weight_context_manager(
             use_meta_tensor=False, mesh=self.device_mesh
@@ -285,22 +284,17 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         with init_context(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
 
-            pipeline = DiffusionPipeline.from_pretrained(
-                pretrained_model_name_or_path=local_path
+            # TODO (Mike): generalize to other diffusers model later
+            actor_module = SD3Transformer2DModel.from_pretrained(
+                pretrained_model_name_or_path=local_path,
+                subfolder="transformer",
             )
-            pipeline.set_progress_bar_config(disable=True)
 
-            inject_SDE_scheduler_into_pipeline(
-                pipeline, pretrained_model_name_or_path=local_path
+            actor_module.requires_grad_(not self._is_lora)
+
+            scheduler = FlowMatchSDEDiscreteScheduler.from_pretrained(
+                pretrained_model_name_or_path=local_path, subfolder="scheduler"
             )
-            if not hasattr(pipeline, "transformer"):
-                raise NotImplementedError(
-                    "Only Transformer-based diffusion model is supported now"
-                )
-
-            prepare_train_network(pipeline, device, torch_dtype, self._is_lora)
-
-            actor_module: ModelMixin = pipeline.transformer
 
             if use_fused_kernels:
                 actor_module.fuse_qkv_projections()
@@ -350,7 +344,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                     actor_module = get_peft_model(
                         actor_module, LoraConfig(**lora_config)
                     )
-                pipeline.transformer = actor_module
 
         # TODO (Mike): add EMA Wrapper
 
@@ -454,8 +447,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             enable_activation_offloading(
                 actor_module_fsdp, fsdp_strategy, enable_gradient_checkpointing
             )
-        pipeline.transformer = actor_module_fsdp
-
         log_gpu_memory_usage(f"After {role} FSDP init", logger=logger)
 
         # TODO: add more optimizer args into config
@@ -505,9 +496,9 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             actor_optimizer = None
             actor_lr_scheduler = None
 
-        return (pipeline, actor_module_fsdp, actor_optimizer, actor_lr_scheduler)
+        return actor_module_fsdp, actor_optimizer, actor_lr_scheduler, scheduler
 
-    def _build_rollout(self, actor_rollout_module):
+    def _build_rollout(self):
         # 1. parse rollout and huggingface model config
         rollout_config: DiffusionRolloutConfig = omega_conf_to_dataclass(
             self.config.rollout
@@ -555,7 +546,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             config=rollout_config,
             model_config=model_config,
             device_mesh=rollout_device_mesh,
-            rollout_module=actor_rollout_module,
         )
         log_gpu_memory_usage(
             f"After building {self.config.rollout.name} rollout", logger=logger
@@ -579,6 +569,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             )
 
         # used for LoRA
+        self.base_sync_done = True
         self.layered_summon = self.config.rollout.get("layered_summon", False)
 
         # 5. switch to trainer mode
@@ -591,13 +582,69 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
     async def rollout_mode(self):
         """Context switch hybridengine to rollout mode."""
-        self.actor_module_fsdp.eval()
+        log_gpu_memory_usage("Before load_fsdp_model_to_gpu", logger=logger)
+        if self._is_offload_param:
+            load_fsdp_model_to_gpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After load_fsdp_model_to_gpu", logger=logger)
 
+        peft_config = None
+        peft_model = getattr(
+            self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp
+        )
+        if hasattr(peft_model, "peft_config"):  # LoRA
+            peft_config = peft_model.peft_config.get("default", None)
+            params = collect_lora_params(
+                module=self.actor_module_fsdp,
+                layered_summon=self.config.rollout.get("layered_summon", False),
+                base_sync_done=self.base_sync_done,
+            )
+        else:
+            params = self.actor_module_fsdp.state_dict()
+
+        log_gpu_memory_usage("Before offload_fsdp_model_to_cpu", logger=logger)
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
+
+        if peft_config is not None and self.base_sync_done:
+            per_tensor_param = (
+                params.items() if isinstance(params, dict) else params
+            )  # Fixed: handle dict case
+        else:
+            device = get_device_id()  # used when fsdp2 set cpu_offload_policy
+            per_tensor_param = (
+                (
+                    name,
+                    param.to(device, non_blocking=True).full_tensor()
+                    if isinstance(param, DTensor)
+                    else param,
+                )
+                for name, param in params.items()
+            )
+
+        if self.config.rollout.free_cache_engine:
+            await self.rollout.resume()
+        log_gpu_memory_usage("After resume weights", logger=logger)
+        await self.rollout.update_weights(
+            per_tensor_param,
+            peft_config=peft_config,
+            base_sync_done=self.base_sync_done,
+        )
+        log_gpu_memory_usage("After update_weights", logger=logger)
+        del params, per_tensor_param
+
+        self.base_sync_done = True
+        # important: need to manually set the random states of each tp to be identical.
         self.torch_random_states = get_torch_device().get_rng_state()
         get_torch_device().set_rng_state(self.gen_random_states)
 
     async def trainer_mode(self):
         """Context switch hybridengine to trainer mode."""
+        if self.config.rollout.free_cache_engine:
+            log_gpu_memory_usage("Before rollout offload", logger=logger)
+            await self.rollout.release()
+            log_gpu_memory_usage("After rollout offload", logger=logger)
+
         self.actor_module_fsdp.train()
 
         # restore random states
@@ -610,6 +657,10 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
         # This is used to import external_lib into the huggingface systems
         import_external_libs(self.config.model.get("external_lib", None))
+
+        override_model_config = OmegaConf.to_container(
+            OmegaConf.create(self.config.model.get("override_config", {}))
+        )
 
         use_shm = self.config.model.get("use_shm", False)
         use_fused_kernels = self.config.model.get("use_fused_kernels", False)
@@ -625,14 +676,15 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
             (
-                self.actor_rollout_module,
                 self.actor_module_fsdp,
                 self.actor_optimizer,
                 self.actor_lr_scheduler,
+                self.scheduler,
             ) = self._build_model_optimizer(
                 model_path=local_path,
                 fsdp_config=fsdp_config,
                 optim_config=optim_config,
+                override_model_config=override_model_config,
                 use_fused_kernels=use_fused_kernels,
                 enable_gradient_checkpointing=self.config.model.get(
                     "enable_gradient_checkpointing", False
@@ -664,12 +716,12 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             self.actor = DiffusersPPOActor(
                 config=actor_cfg,
                 actor_module=self.actor_module_fsdp,
-                pipeline=self.actor_rollout_module,
+                scheduler=self.scheduler,
                 actor_optimizer=self.actor_optimizer,
             )
 
         if self._is_rollout:
-            self._build_rollout(self.actor_rollout_module)
+            self._build_rollout()
 
         if self._is_ref:
             ref_model_path = self.config.model.path
@@ -684,6 +736,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                 model_path=local_path,
                 fsdp_config=omega_conf_to_dataclass(self.config.ref.fsdp_config),
                 optim_config=None,
+                override_model_config=override_model_config,
                 use_fused_kernels=use_fused_kernels,
                 role="ref",
             )[0]
@@ -693,7 +746,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             self.ref_policy = DiffusersPPOActor(
                 config=self.config.ref,
                 actor_module=self.ref_module_fsdp,
-                pipeline=self.actor_rollout_module,
+                scheduler=self.scheduler,
             )
 
         if self._is_actor:
@@ -795,6 +848,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         assert self._is_actor
         if self._is_offload_param:
             load_fsdp_model_to_gpu(self.actor_module_fsdp)
+
         # Support all hardwares
         from contextlib import nullcontext
 
@@ -821,6 +875,11 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             )
 
         return output
+
+    @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="actor"))
+    @DistProfiler.annotate(color="olive", role="ref_compute_log_prob")
+    def compute_ref_log_prob(self, data: DataProto):
+        raise NotImplementedError("Ref log prob is not supported for Diffusers yet.")
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, global_step=0, max_ckpt_to_keep=None):

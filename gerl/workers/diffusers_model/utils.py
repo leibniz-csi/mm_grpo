@@ -19,39 +19,52 @@ import torch
 if TYPE_CHECKING:
     from diffusers import DiffusionPipeline
 
+__all__ = ["prepare_pipeline", "load_to_device"]
 
-def prepare_train_network(
+
+def prepare_pipeline(
     pipeline: "DiffusionPipeline",
-    device: torch.device,
     dtype: torch.dtype,
-    is_lora: bool = True,
 ) -> None:
-    """Prepare the training network by moving it to the specified device and dtype.
+    """Prepare the diffusion pipeline by casting to the specified dtype.
 
     Args:
         pipeline (DiffusionPipeline): The diffusion pipeline.
-        device (torch.device): The target device.
         dtype (torch.dtype): The target data type.
-        is_lora (bool): Whether to use LoRA for training.
     """
     from diffusers import StableDiffusion3Pipeline
 
     if isinstance(pipeline, StableDiffusion3Pipeline):
-        # freeze parameters of models to save more memory
-        pipeline.vae.requires_grad_(False)
-        pipeline.text_encoder.requires_grad_(False)
-        pipeline.text_encoder_2.requires_grad_(False)
-        pipeline.text_encoder_3.requires_grad_(False)
-        pipeline.transformer.requires_grad_(not is_lora)
         # Move vae and text_encoder to device and cast to inference_dtype
-        pipeline.vae.to(device)
-        pipeline.text_encoder.to(device, dtype=dtype)
-        pipeline.text_encoder_2.to(device, dtype=dtype)
-        pipeline.text_encoder_3.to(device, dtype=dtype)
+        pipeline.text_encoder.to(dtype=dtype)
+        pipeline.text_encoder_2.to(dtype=dtype)
+        pipeline.text_encoder_3.to(dtype=dtype)
+        pipeline.transformer.to(dtype=dtype)
         # set eval mode
         pipeline.vae.eval()
         pipeline.text_encoder.eval()
         pipeline.text_encoder_2.eval()
         pipeline.text_encoder_3.eval()
+        pipeline.transformer.eval()
+    else:
+        raise NotImplementedError()
+
+
+def load_to_device(pipeline: "DiffusionPipeline", device: str) -> None:
+    """Load the diffusion pipeline to the specified device.
+
+    Args:
+        pipeline (DiffusionPipeline): The diffusion pipeline.
+        device (str): The target device.
+    """
+    from diffusers import StableDiffusion3Pipeline
+
+    if isinstance(pipeline, StableDiffusion3Pipeline):
+        # Move vae and text_encoder to device and cast to inference_dtype
+        pipeline.vae.to(device)
+        pipeline.text_encoder.to(device)
+        pipeline.text_encoder_2.to(device)
+        pipeline.text_encoder_3.to(device)
+        pipeline.transformer.to(device)
     else:
         raise NotImplementedError()

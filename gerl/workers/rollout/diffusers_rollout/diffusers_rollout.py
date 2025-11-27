@@ -16,7 +16,6 @@
 Rollout with diffusers models.
 """
 
-import contextlib
 import logging
 import os
 from typing import TYPE_CHECKING, Generator, Optional
@@ -26,17 +25,24 @@ import torch
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
+from verl.utils.fs import copy_to_local
 from verl.utils.profiler import GPUMemoryLogger
 from verl.utils.torch_dtypes import PrecisionType
 from verl.workers.rollout.base import BaseRollout
 
 from ....protocol import DataProto
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
+from ...diffusers_model import (
+    inject_SDE_scheduler_into_pipeline,
+    load_to_device,
+    prepare_pipeline,
+)
+from .utils import get_negative_prompt_embedding
 
 if TYPE_CHECKING:
     from diffusers import DiffusionPipeline
 
-__all__ = ["DiffusersSyncRollout"]
+__all__ = ["DiffusersSyncRollout", "DiffusersAsyncRollout"]
 
 
 logger = logging.getLogger(__file__)
@@ -49,22 +55,32 @@ class DiffusersSyncRollout(BaseRollout):
         config: DiffusionRolloutConfig,
         model_config: DiffusersModelConfig,
         device_mesh: DeviceMesh,
-        rollout_module: Optional["DiffusionPipeline"] = None,
     ):
         super().__init__(config, model_config, device_mesh)
         self.config = config
         self.model_config = model_config
         self.device_mesh = device_mesh
-        if rollout_module is None:
-            raise ValueError("rollout_module must be provided for DiffusersSyncRollout")
-        self.rollout_module = rollout_module
+        self.dtype = PrecisionType.to_dtype(config.dtype)
 
-        if config.dtype is None:
-            self.dtype = None
-        else:
-            self.dtype = PrecisionType.to_dtype(config.dtype)
-
+        self.rollout_module = self.init_diffusion_pipeline(self.dtype, sync=True)
         self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
+
+    def init_diffusion_pipeline(self, dtype, sync: bool) -> "DiffusionPipeline":
+        from diffusers import DiffusionPipeline
+
+        local_path = copy_to_local(
+            self.model_config.path, use_shm=self.model_config.use_shm
+        )
+        pipeline = DiffusionPipeline.from_pretrained(local_path)
+        pipeline.set_progress_bar_config(disable=True)
+        inject_SDE_scheduler_into_pipeline(
+            pipeline, pretrained_model_name_or_path=local_path
+        )
+        prepare_pipeline(pipeline, dtype)
+
+        if sync:
+            load_to_device(pipeline, get_device_name())
+        return pipeline
 
     @GPUMemoryLogger(role="diffusers rollout", logger=logger)
     @torch.no_grad()
@@ -78,16 +94,9 @@ class DiffusersSyncRollout(BaseRollout):
             "negative_pooled_prompt_embeds"
         ].to(get_device_name())
 
-        self.rollout_module.transformer.eval()
         micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
         generated_input_texts = []
         generated_results = []
-
-        def autocast():
-            if self.dtype is not None:
-                return torch.autocast(device_type=get_device_name(), dtype=self.dtype)
-            else:
-                return contextlib.nullcontext()
 
         seed = prompts.meta_info.get("seed", None)
         if seed is not None:
@@ -105,27 +114,26 @@ class DiffusersSyncRollout(BaseRollout):
                 "num_inference_steps", self.config.num_inference_steps
             )
 
-            with autocast():
-                output = self.rollout_module(
-                    input_texts,
-                    height=self.config.image_height,
-                    width=self.config.image_width,
-                    num_inference_steps=num_inference_steps,
-                    guidance_scale=self.config.guidance_scale,
-                    generator=generator,
-                    max_sequence_length=self.config.prompt_length,
-                    negative_prompt_embeds=negative_prompt_embeds.repeat(
-                        len(input_texts), 1, 1
-                    ),
-                    negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
-                        len(input_texts), 1
-                    ),
-                    output_type="pt",
-                    noise_level=noise_level,
-                    sde_window_size=self.config.sde_window_size,
-                    sde_window_range=self.config.sde_window_range,
-                    sde_type=self.config.sde_type,
-                )
+            output = self.rollout_module(
+                input_texts,
+                height=self.config.image_height,
+                width=self.config.image_width,
+                num_inference_steps=num_inference_steps,
+                guidance_scale=self.config.guidance_scale,
+                generator=generator,
+                max_sequence_length=self.config.prompt_length,
+                negative_prompt_embeds=negative_prompt_embeds.repeat(
+                    len(input_texts), 1, 1
+                ),
+                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
+                    len(input_texts), 1
+                ),
+                output_type="pt",
+                noise_level=noise_level,
+                sde_window_size=self.config.sde_window_size,
+                sde_window_range=self.config.sde_window_range,
+                sde_type=self.config.sde_type,
+            )
 
             result = TensorDict(
                 {
@@ -151,26 +159,18 @@ class DiffusersSyncRollout(BaseRollout):
         result.meta_info["cached_steps"] = result.batch["timesteps"].shape[1]
         return result
 
-    def cache_prompt_embeds(self, negative_prompt: str = "") -> torch.Tensor:
-        # TODO (Mike): for stable diffusion 3 only now, need to generalize later
-        prompt_embeds, _, pooled_prompt_embeds, _ = self.rollout_module.encode_prompt(
-            negative_prompt,
-            negative_prompt,
-            negative_prompt,
-            do_classifier_free_guidance=False,
+    def cache_prompt_embeds(
+        self, negative_prompt: str = ""
+    ) -> dict[str, torch.FloatTensor]:
+        embedding = get_negative_prompt_embedding(
+            self.rollout_module,
+            negative_prompt=negative_prompt,
             max_sequence_length=self.config.prompt_length,
         )
-        return {
-            "negative_prompt_embeds": prompt_embeds.to("cpu"),
-            "negative_pooled_prompt_embeds": pooled_prompt_embeds.to("cpu"),
-        }
+        return {k: v.to("cpu") for k, v in embedding.items()}
 
-    async def resume(self, tags: list[str]):
-        """Resume rollout weights or kv cache in GPU memory.
-
-        Args:
-            tags: weights or kv_cache.
-        """
+    async def resume(self):
+        """Resume rollout weights in GPU memory."""
         pass
 
     async def update_weights(
@@ -186,5 +186,32 @@ class DiffusersSyncRollout(BaseRollout):
         pass
 
     async def release(self):
-        """Release weights and kv cache in GPU memory."""
+        """Release rollout weights in GPU memory."""
         pass
+
+
+class DiffusersAsyncRollout(DiffusersSyncRollout):
+    def __init__(
+        self,
+        config: DiffusionRolloutConfig,
+        model_config: DiffusersModelConfig,
+        device_mesh: DeviceMesh,
+    ):
+        super(DiffusersAsyncRollout, self).__init__(config, model_config, device_mesh)
+        self.config = config
+        self.model_config = model_config
+        self.device_mesh = device_mesh
+        self.dtype = PrecisionType.to_dtype(config.dtype)
+
+        self.rollout_module = self.init_diffusion_pipeline(self.dtype, sync=False)
+        self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
+
+    async def resume(self):
+        """Resume rollout weights in GPU memory."""
+        if self.config.free_cache_engine:
+            load_to_device(self.rollout_module, get_device_name())
+
+    async def release(self):
+        """Release weights and kv cache in GPU memory."""
+        if self.config.free_cache_engine:
+            load_to_device(self.rollout_module, "cpu")
