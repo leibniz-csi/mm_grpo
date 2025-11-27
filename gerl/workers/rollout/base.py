@@ -41,12 +41,8 @@ class BaseRollout(ABC):
         self.device_mesh = device_mesh
 
     @abstractmethod
-    async def resume(self, tags: list[str]):
-        """Resume rollout weights or kv cache in GPU memory.
-
-        Args:
-            tags: weights or kv_cache.
-        """
+    async def resume(self):
+        """Resume rollout weights in GPU memory."""
         pass
 
     @abstractmethod

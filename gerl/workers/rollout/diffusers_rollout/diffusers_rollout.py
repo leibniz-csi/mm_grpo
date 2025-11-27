@@ -59,7 +59,7 @@ class DiffusersSyncRollout(BaseRollout):
         device_mesh: DeviceMesh,
     ):
         super().__init__(config, model_config, device_mesh)
-        self.dtype = PrecisionType.to_dtype(config.dtype)
+        self.dtype = PrecisionType.to_dtype(self.config.dtype)
 
         self.pipeline = self.init_diffusion_pipeline(self.dtype)
         self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
@@ -235,4 +235,5 @@ class DiffusersSyncRollout(BaseRollout):
         set_peft_model_state_dict(self.pipeline.transformer, dict(weights))
 
 
-class DiffusersAsyncRollout(DiffusersSyncRollout): ...
+class DiffusersAsyncRollout(DiffusersSyncRollout):
+    raise NotImplementedError("DiffusersAsyncRollout is not implemented yet.")
