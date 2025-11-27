@@ -34,7 +34,7 @@ class SamplingConfig(BaseConfig):
 class DiffusionRolloutConfig(BaseConfig):
     name: Optional[str] = MISSING
     mode: str = "sync"
-    gen_with_reward: bool = False
+    gen_with_reward: bool = True
 
     prompt_length: int = 128
     image_height: int = 512

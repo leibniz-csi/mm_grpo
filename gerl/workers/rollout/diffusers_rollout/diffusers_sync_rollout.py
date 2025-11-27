@@ -149,7 +149,7 @@ class DiffusersSyncRollout(BaseRollout):
         self,
         prompts: DataProto,
     ) -> DataProto:
-        reward_fn = prompts.meta_info.get("reward_fn", None)
+        reward_fn = prompts.meta_info.pop("reward_fn", None)
         assert reward_fn is not None, (
             "reward_fn must be provided in meta_info for reward computation."
         )
