@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from omegaconf import MISSING
@@ -34,6 +34,8 @@ class DiffusersModelConfig(BaseConfig):
     use_shm: bool = False
 
     external_lib: Optional[str] = None
+
+    override_config: dict = field(default_factory=dict)
 
     enable_gradient_checkpointing: bool = False
     enable_activation_offload: bool = False

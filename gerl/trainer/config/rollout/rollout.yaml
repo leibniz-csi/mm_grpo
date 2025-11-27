@@ -40,7 +40,10 @@ sde_window_size: null
 sde_window_range: null
 
 # Rollout dtype
-dtype: null
+dtype: bfloat16
+
+# Whether to free cache engine during trainer mode to save GPU memory.
+free_cache_engine: True
 
 # TP size for rollout
 tensor_model_parallel_size: 1

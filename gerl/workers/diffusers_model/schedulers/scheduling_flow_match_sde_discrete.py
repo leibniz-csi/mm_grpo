@@ -109,7 +109,6 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
 
         # Upcast to avoid precision issues when computing prev_sample
         sample = sample.to(torch.float32)
-        model_output = model_output.to(torch.float32)
         if prev_sample is not None:
             prev_sample = prev_sample.to(torch.float32)
 
@@ -150,7 +149,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
         sde_type: Literal["cps", "sde"] = "sde",
     ):
         # check inputs
-        assert sample.dtype == model_output.dtype == torch.float32
+        assert sample.dtype == torch.float32
         if prev_sample is not None:
             assert prev_sample.dtype == torch.float32
 

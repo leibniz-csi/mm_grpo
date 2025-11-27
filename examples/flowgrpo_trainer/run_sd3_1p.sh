@@ -28,6 +28,8 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.guidance_scale=4.5 \
     actor_rollout_ref.rollout.noise_level=0.7 \
+    actor_rollout_ref.rollout.dtype=float16 \
+    actor_rollout_ref.rollout.free_cache_engine=False \
     reward_model.reward_manager=diffusion-batch \
     trainer.logger='["console", "wandb"]' \
     trainer.project_name='flow_grpo' \

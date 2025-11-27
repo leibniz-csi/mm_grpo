@@ -37,7 +37,7 @@ from ...trainer.ppo.core_algos import get_policy_loss_fn, kl_penalty
 from ..config import DiffusionFSDPActorConfig
 
 if TYPE_CHECKING:
-    from diffusers import DiffusionPipeline
+    from diffusers.schedulers.scheduling_utils import SchedulerMixin
 
 __all__ = ["DiffusersPPOActor"]
 
@@ -51,7 +51,7 @@ class DiffusersPPOActor(BasePPOActor):
     Args:
         config (DiffusionActorConfig): Configuration for the actor
         actor_module (nn.Module): The actor module
-        pipeline (DiffusionPipeline): The diffusion pipeline
+        scheduler (SchedulerMixin): The scheduler for diffusion process
         actor_optimizer (Optional[torch.optim.Optimizer], optional): The optimizer for the actor.
             When None, it is Reference Policy. Defaults to None.
     """
@@ -60,14 +60,17 @@ class DiffusersPPOActor(BasePPOActor):
         self,
         config: DiffusionFSDPActorConfig,
         actor_module: nn.Module,
-        pipeline: "DiffusionPipeline",
+        scheduler: "SchedulerMixin",
         actor_optimizer: Optional[torch.optim.Optimizer] = None,
     ):
         """When optimizer is None, it is Reference Policy"""
         super().__init__(config)
         self.actor_module = actor_module
         self.actor_optimizer = actor_optimizer
-        self.scheduler = pipeline.scheduler
+        self.scheduler = scheduler
+        self.scheduler.set_timesteps(
+            config.num_inference_steps, device=get_device_name()
+        )
         self.device_name = get_device_name()
         self.param_dtype = PrecisionType.to_dtype(
             self.config.fsdp_config.get("dtype", "bfloat16")
@@ -120,8 +123,8 @@ class DiffusersPPOActor(BasePPOActor):
             )[0]
 
         _, log_prob, prev_sample_mean, std_dev_t = self.scheduler.sample_previous_step(
-            sample=latents[:, step],
-            model_output=noise_pred.float(),
+            sample=latents[:, step].float(),
+            model_output=noise_pred,
             timestep=timesteps[:, step],
             noise_level=self.config.noise_level,
             prev_sample=latents[:, step + 1].float(),
