@@ -27,16 +27,18 @@ from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
 from verl.utils.fs import copy_to_local
 from verl.utils.profiler import GPUMemoryLogger
+from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.torch_dtypes import PrecisionType
-from verl.workers.rollout.base import BaseRollout
 
 from ....protocol import DataProto
+from ....utils.lora import select_lora_modules
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
 from ...diffusers_model import (
     inject_SDE_scheduler_into_pipeline,
     load_to_device,
     prepare_pipeline,
 )
+from ..base import BaseRollout
 from .utils import get_negative_prompt_embedding
 
 if TYPE_CHECKING:
@@ -57,15 +59,12 @@ class DiffusersSyncRollout(BaseRollout):
         device_mesh: DeviceMesh,
     ):
         super().__init__(config, model_config, device_mesh)
-        self.config = config
-        self.model_config = model_config
-        self.device_mesh = device_mesh
         self.dtype = PrecisionType.to_dtype(config.dtype)
 
-        self.rollout_module = self.init_diffusion_pipeline(self.dtype, sync=True)
+        self.pipeline = self.init_diffusion_pipeline(self.dtype)
         self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
 
-    def init_diffusion_pipeline(self, dtype, sync: bool) -> "DiffusionPipeline":
+    def init_diffusion_pipeline(self, dtype) -> "DiffusionPipeline":
         from diffusers import DiffusionPipeline
 
         local_path = copy_to_local(
@@ -78,9 +77,39 @@ class DiffusersSyncRollout(BaseRollout):
         )
         prepare_pipeline(pipeline, dtype)
 
-        if sync:
+        if self.model_config.lora_rank > 0:
+            self.lora_config = self.inject_lora(pipeline)
+        else:
+            self.lora_config = None
+
+        if not self.config.free_cache_engine:
             load_to_device(pipeline, get_device_name())
         return pipeline
+
+    def inject_lora(self, pipeline: "DiffusionPipeline"):
+        from peft import LoraConfig, get_peft_model
+
+        assert self.model_config.target_modules is not None
+
+        # Convert config to regular Python types before creating PEFT model
+        lora_config = {
+            "r": self.model_config.lora_rank,
+            "lora_alpha": self.model_config.lora_alpha,
+            "init_lora_weights": self.model_config.lora_init_weights,
+            "target_modules": convert_to_regular_types(
+                select_lora_modules(
+                    model_name=os.path.basename(self.model_config.path),
+                    target_modules=self.model_config.target_modules,
+                )
+            ),
+            "exclude_modules": convert_to_regular_types(
+                self.model_config.exclude_modules
+            ),
+            "bias": "none",
+        }
+        lora_config = LoraConfig(**lora_config)
+        pipeline.transformer = get_peft_model(pipeline.transformer, lora_config)
+        return lora_config
 
     @GPUMemoryLogger(role="diffusers rollout", logger=logger)
     @torch.no_grad()
@@ -114,7 +143,7 @@ class DiffusersSyncRollout(BaseRollout):
                 "num_inference_steps", self.config.num_inference_steps
             )
 
-            output = self.rollout_module(
+            output = self.pipeline(
                 input_texts,
                 height=self.config.image_height,
                 width=self.config.image_width,
@@ -163,7 +192,7 @@ class DiffusersSyncRollout(BaseRollout):
         self, negative_prompt: str = ""
     ) -> dict[str, torch.FloatTensor]:
         embedding = get_negative_prompt_embedding(
-            self.rollout_module,
+            self.pipeline,
             negative_prompt=negative_prompt,
             max_sequence_length=self.config.prompt_length,
         )
@@ -171,7 +200,7 @@ class DiffusersSyncRollout(BaseRollout):
 
     async def resume(self):
         """Resume rollout weights in GPU memory."""
-        pass
+        load_to_device(self.pipeline, get_device_name())
 
     async def update_weights(
         self,
@@ -183,35 +212,27 @@ class DiffusersSyncRollout(BaseRollout):
         Args:
             weights: A generator that yields the name of the weight tensor and the tensor itself.
         """
-        pass
+        if self.model_config.lora_rank > 0:
+            return self.update_lora_weights(weights)
+        else:
+            raise NotImplementedError("Only LoRA weight update is supported now.")
 
     async def release(self):
         """Release rollout weights in GPU memory."""
-        pass
+        load_to_device(self.pipeline, "cpu")
 
-
-class DiffusersAsyncRollout(DiffusersSyncRollout):
-    def __init__(
+    def update_lora_weights(
         self,
-        config: DiffusionRolloutConfig,
-        model_config: DiffusersModelConfig,
-        device_mesh: DeviceMesh,
+        weights: Generator[tuple[str, torch.Tensor], None, None],
     ):
-        super(DiffusersAsyncRollout, self).__init__(config, model_config, device_mesh)
-        self.config = config
-        self.model_config = model_config
-        self.device_mesh = device_mesh
-        self.dtype = PrecisionType.to_dtype(config.dtype)
+        """Update the LoRA weights of the rollout model.
 
-        self.rollout_module = self.init_diffusion_pipeline(self.dtype, sync=False)
-        self._cached_prompt_embeds: Optional[dict[str, torch.Tensor]] = None
+        Args:
+            weights: A generator that yields the name of the weight tensor and the tensor itself.
+        """
+        from peft import set_peft_model_state_dict
 
-    async def resume(self):
-        """Resume rollout weights in GPU memory."""
-        if self.config.free_cache_engine:
-            load_to_device(self.rollout_module, get_device_name())
+        set_peft_model_state_dict(self.pipeline.transformer, dict(weights))
 
-    async def release(self):
-        """Release weights and kv cache in GPU memory."""
-        if self.config.free_cache_engine:
-            load_to_device(self.rollout_module, "cpu")
+
+class DiffusersAsyncRollout(DiffusersSyncRollout): ...
