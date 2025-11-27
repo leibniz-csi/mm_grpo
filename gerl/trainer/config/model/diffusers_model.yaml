@@ -12,7 +12,7 @@ path: stabilityai/stable-diffusion-3.5-medium
 # whether to use shared memory for model loading
 use_shm: False
 
-# override diffusesr config
+# override diffusers config
 override_config: {}
 
 # whether to use external libs for the model
