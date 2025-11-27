@@ -39,7 +39,7 @@ PolicyLossFn = Callable[
         torch.Tensor,  # advantages
         Optional[DictConfig],  # config
     ],
-    torch.Tensor,
+    tuple[torch.Tensor, dict[str, Any]],
 ]
 
 POLICY_LOSS_REGISTRY: dict[str, PolicyLossFn] = {}
@@ -217,7 +217,7 @@ def compute_policy_loss_flow_grpo(
     log_prob: torch.Tensor,
     advantages: torch.Tensor,
     config: DictConfig,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, dict[str, Any]]:
     """
     Compute the clipped policy objective and related metrics for FlowGRPO.
 
@@ -226,11 +226,11 @@ def compute_policy_loss_flow_grpo(
 
     Args:
         old_log_prob (torch.Tensor):
-            Log-probabilities of actions under the old policy, shape (batch_size, response_length).
+            Log-probabilities of actions under the old policy, shape (batch_size, steps, response_length).
         log_prob (torch.Tensor):
-            Log-probabilities of actions under the current policy, shape (batch_size, response_length).
+            Log-probabilities of actions under the current policy, shape (batch_size, steps, response_length).
         advantages (torch.Tensor):
-            Advantage estimates for each action, shape (batch_size, response_length).
+            Advantage estimates for each action, shape (batch_size,).
         config: `(verl.trainer.config.ActorConfig)`:
             config for the actor.
     """
@@ -247,16 +247,18 @@ def compute_policy_loss_flow_grpo(
         1.0 + config.clip_ratio,
     )
     policy_loss = torch.mean(torch.maximum(unclipped_loss, clipped_loss))
-    return policy_loss
+
+    pg_metrics = {"actor/ppo_kl": policy_loss.detach().item()}
+    return policy_loss, pg_metrics
 
 
 def kl_penalty(
     prev_sample_mean: torch.FloatTensor,
-    prev_sample_mean_ref: torch.FloatTensor,
+    ref_prev_sample_mean: torch.FloatTensor,
     std_dev_t: torch.FloatTensor,
 ) -> torch.FloatTensor:
     """Compute KL divergence"""
-    kl_loss = ((prev_sample_mean - prev_sample_mean_ref) ** 2).mean(
+    kl_loss = ((prev_sample_mean - ref_prev_sample_mean) ** 2).mean(
         dim=(1, 2, 3), keepdim=True
     ) / (2 * std_dev_t**2)
     return kl_loss
