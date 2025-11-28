@@ -8,19 +8,22 @@ An easy-to-use and fast library to support RL training for multi-modal generativ
 - Scalable and efficient parallel training with asynchronous streaming workflow
 - Compatible with diffusion models from `Diffusers`.
 
+### Supported Algorithms
+- [x] [Flow-GRPO](https://arxiv.org/abs/2505.05470)
+- [x] Flow-GRPO-Fast
+- [ ] [Mix-GRPO](https://arxiv.org/html/2507.21802v1) (coming soon)
+- [ ] [DiffusionNFT](https://arxiv.org/abs/2509.16117) (coming soon)
+
 ### Supported models
 
 - [x] [Stable-Diffusion-3.5](https://arxiv.org/abs/2403.03206)
 
 ### Supported Rewards
 
-- [x] [PaddleOCR](https://github.com/PaddlePaddle/PaddleOCR)
+- [x] [PaddleOCR](https://arxiv.org/abs/2109.03144)
+- [x] [Qwen2.5VL-OCR](https://arxiv.org/abs/2502.13923)
 
-### Supported Algorithms
-- [x] [Flow-GRPO](https://arxiv.org/abs/2505.05470)
-- [x] Flow-GRPO-Fast
-- [ ] [Mix-GRPO](https://arxiv.org/html/2507.21802v1) (coming soon)
-- [ ] [DiffusionNFT](https://arxiv.org/abs/2509.16117) (coming soon)
+
 
 
 *Note: This repository is continuously updated. New models, rewards, and algorithms will be added soon.*
