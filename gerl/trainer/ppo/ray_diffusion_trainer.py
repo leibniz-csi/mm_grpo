@@ -899,7 +899,13 @@ class RayDiffusionPPOTrainer:
                                 batch, self.reward_fn
                             )
 
-                    bypass_recomputing_logprobs = False
+                    rollout_corr_config = self.config.algorithm.get(
+                        "rollout_correction", None
+                    )
+                    bypass_recomputing_logprobs = (
+                        rollout_corr_config
+                        and rollout_corr_config.get("bypass_mode", False)
+                    )
                     if bypass_recomputing_logprobs:
                         batch.batch["old_log_probs"] = batch.batch["rollout_log_probs"]
                     else:  # Recompute old_log_probs

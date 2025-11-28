@@ -17,10 +17,16 @@
 # ============================================================================
 
 from dataclasses import dataclass
+from typing import Optional
 
 from verl.base_config import BaseConfig
 
 __all__ = ["AlgoConfig"]
+
+
+@dataclass
+class RolloutCorrectionConfig(BaseConfig):
+    bypass_mode: bool = False
 
 
 @dataclass
@@ -38,3 +44,4 @@ class AlgoConfig(BaseConfig):
     adv_estimator: str = "flow_grpo"
     norm_adv_by_std_in_grpo: bool = True
     global_std: bool = True
+    rollout_correction: Optional[RolloutCorrectionConfig] = None
