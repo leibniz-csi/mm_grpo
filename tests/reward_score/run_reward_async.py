@@ -18,8 +18,10 @@ This script simulates async reward score computing via ray.remote,
 validating the asynchrony of `compute_reward_async` in `gerl\\trainer\\ppo\\reward.py`.
 """
 
-import ray
 import time
+
+import ray
+
 
 def compute_reward(delay):
     """
@@ -38,6 +40,7 @@ def compute_reward_async(delay):
     finish_msg = compute_reward(delay)
     return finish_msg
 
+
 def test_compute_reward_async():
     ray.init(include_dashboard=False)
     # time.sleep(2)  # wait for ray init
@@ -45,7 +48,7 @@ def test_compute_reward_async():
     # Test asynchrous reward computation
     # Launch multiple async reward fns with varying delays
     start_time = time.time()
-    futures = [compute_reward_async.remote(i+1) for i in range(5)]
+    futures = [compute_reward_async.remote(i + 1) for i in range(5)]
     end_time = time.time()
     async_launch_duration = end_time - start_time
     print(f"Launched async reward fns in {async_launch_duration:.2f} seconds.")
@@ -57,7 +60,9 @@ def test_compute_reward_async():
     end_time = time.time()
     async_get_duration = end_time - start_time
     print(f"Fetched all async reward results in {async_get_duration:.2f} seconds.")
-    print(f"Total async reward running in {(async_launch_duration + async_get_duration):.2f} seconds.")
+    print(
+        f"Total async reward running in {(async_launch_duration + async_get_duration):.2f} seconds."
+    )
 
     print("*" * 50)
 
@@ -65,12 +70,14 @@ def test_compute_reward_async():
     # Run multiple sync reward fns with varying delays sequentially
     start_time = time.time()
     for i in range(5):
-        print("Sync:", compute_reward(i+1))
+        print("Sync:", compute_reward(i + 1))
     end_time = time.time()
     sync_duration = end_time - start_time
-    print(f"Run sync reward fns in {sync_duration:.2f} seconds.") # around 15s
+    print(f"Run sync reward fns in {sync_duration:.2f} seconds.")  # around 15s
 
-    assert async_launch_duration + async_get_duration < sync_duration, "Async reward computation should be faster than sync."
+    assert async_launch_duration + async_get_duration < sync_duration, (
+        "Async reward computation should be faster than sync."
+    )
 
 
 if __name__ == "__main__":
