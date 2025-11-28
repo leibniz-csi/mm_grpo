@@ -69,7 +69,7 @@ class DefaultScorer:
                 from . import ocr
 
                 # init OCR model scorer
-                self.scorer = ocr.PaddleOcrScorer()  # type: ignore
+                self.scorer = ocr.PaddleOCRScorer()  # type: ignore
             else:
                 raise NotImplementedError(
                     f"reward_fn is not specified, and reward function is not implemented for {data_source=}"

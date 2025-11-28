@@ -25,6 +25,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=1 \
     actor_rollout_ref.actor.policy_loss.loss_mode=flow_grpo \
     actor_rollout_ref.rollout.name=diffusers \
+    actor_rollout_ref.rollout.with_reward=True \
     actor_rollout_ref.rollout.n=16 \
     actor_rollout_ref.rollout.guidance_scale=1.0 \
     actor_rollout_ref.rollout.noise_level=0.8 \
