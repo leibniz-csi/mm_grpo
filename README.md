@@ -19,8 +19,8 @@ An easy-to-use and fast library to support RL training for multi-modal generativ
 ### Supported Algorithms
 - [x] [Flow-GRPO](https://arxiv.org/abs/2505.05470)
 - [x] Flow-GRPO-Fast
-- [ ] [Mix-GRPO](https://arxiv.org/html/2507.21802v1)(coming soon)
-- [ ] [DiffusionNFT](https://arxiv.org/abs/2509.16117)(coming soon)
+- [ ] [Mix-GRPO](https://arxiv.org/html/2507.21802v1) (coming soon)
+- [ ] [DiffusionNFT](https://arxiv.org/abs/2509.16117) (coming soon)
 
 
 *Note: This repository is continuously updated. New models, rewards, and algorithms will be added soon.*
