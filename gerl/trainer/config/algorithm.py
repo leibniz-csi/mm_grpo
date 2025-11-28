@@ -21,7 +21,7 @@ from typing import Optional
 
 from verl.base_config import BaseConfig
 
-__all__ = ["AlgoConfig"]
+__all__ = ["AlgoConfig", "RolloutCorrectionConfig"]
 
 
 @dataclass
