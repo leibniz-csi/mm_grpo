@@ -343,13 +343,16 @@ class RayDiffusionPPOTrainer:
             non_tensor_batch_keys=list(non_tensor_batch_keys_to_pop),
         )
 
-        # For agent loop, we need reward model keys to compute score.
-        if self.async_rollout_mode:
+        # For agent loop or async reward compute during rollout, we need reward model keys to compute score.
+        if self.async_rollout_mode or self.config.actor_rollout_ref.rollout.with_reward:
             gen_batch.non_tensor_batch.update(batch.non_tensor_batch)
 
         return gen_batch
 
     def _validate(self):
+        if self.val_reward_fn is None:
+            raise ValueError("val_reward_fn must be provided for validation.")
+
         data_source_lst = []
         reward_extra_infos_dict: dict[str, list] = defaultdict(list)
 
@@ -407,6 +410,11 @@ class RayDiffusionPPOTrainer:
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
             if not self.async_rollout_mode:
+                if self.config.actor_rollout_ref.rollout.with_reward:
+                    test_gen_batch.meta_info["reward_fn"] = self.val_reward_fn
+                    print(
+                        f"updated test_gen_batch meta info: {test_gen_batch.meta_info}"
+                    )
                 test_output_gen_batch = self.actor_rollout_wg.generate_sequences(
                     test_gen_batch
                 )
@@ -424,19 +432,24 @@ class RayDiffusionPPOTrainer:
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info["validate"] = True
 
-            # evaluate using reward_function
-            if self.val_reward_fn is None:
-                raise ValueError("val_reward_fn must be provided for validation.")
-
-            result = self.val_reward_fn(test_batch, return_dict=True)
-            reward_tensor = result["reward_tensor"]
+            reward_extra_info = None
+            if self.config.actor_rollout_ref.rollout.with_reward:
+                reward_tensor = test_output_gen_batch.batch["instance_level_scores"]
+                reward_extra_info = test_output_gen_batch.non_tensor_batch
+            else:
+                # evaluate using reward_function
+                result = self.val_reward_fn(test_batch, return_dict=True)
+                reward_tensor = result["reward_tensor"]
+                if "reward_extra_info" in result:
+                    reward_extra_info = result["reward_extra_info"]
             scores = reward_tensor.tolist()
             sample_scores.extend(scores)
 
             reward_extra_infos_dict["reward"].extend(scores)
-            if "reward_extra_info" in result:
-                for key, lst in result["reward_extra_info"].items():
-                    reward_extra_infos_dict[key].extend(lst)
+            if reward_extra_info:
+                for key, lst in reward_extra_info.items():
+                    if key != "prompt":
+                        reward_extra_infos_dict[key].extend(lst)
 
             data_source_lst.append(
                 test_batch.non_tensor_batch.get(
@@ -864,8 +877,10 @@ class RayDiffusionPPOTrainer:
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
                         if not self.async_rollout_mode:
+                            if self.config.actor_rollout_ref.rollout.with_reward:
+                                gen_batch_output.meta_info["reward_fn"] = self.reward_fn
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(
-                                gen_batch_output
+                                gen_batch_output,
                             )
                         else:
                             gen_batch_output = (
@@ -883,21 +898,20 @@ class RayDiffusionPPOTrainer:
                     )
                     batch = batch.union(gen_batch_output)
 
-                    with marked_timer("reward", timing_raw, color="yellow"):
-                        # compute reward model score
-                        if self.use_rm and "rm_scores" not in batch.batch.keys():
-                            reward_tensor = self.rm_wg.compute_rm_score(batch)
-                            batch = batch.union(reward_tensor)
+                    if not self.config.actor_rollout_ref.rollout.with_reward:
+                        with marked_timer("reward", timing_raw, color="yellow"):
+                            if self.use_rm and "rm_scores" not in batch.batch.keys():
+                                raise NotImplementedError  # TODO： reward model worker
 
-                        if self.config.reward_model.launch_reward_fn_async:
-                            future_reward = compute_reward_async.remote(
-                                data=batch,
-                                config=self.config,
-                            )
-                        else:
-                            reward_tensor, reward_extra_infos_dict = compute_reward(
-                                batch, self.reward_fn
-                            )
+                            if self.config.reward_model.launch_reward_fn_async:
+                                future_reward = compute_reward_async.remote(
+                                    data=batch,
+                                    config=self.config,
+                                )
+                            else:
+                                reward_tensor, reward_extra_infos_dict = compute_reward(
+                                    batch, self.reward_fn
+                                )
 
                     rollout_corr_config = self.config.algorithm.get(
                         "rollout_correction", None
@@ -933,25 +947,27 @@ class RayDiffusionPPOTrainer:
                             batch = batch.union(ref_log_prob)
 
                     with marked_timer("adv", timing_raw, color="brown"):
-                        # we combine with rule-based rm
-                        reward_extra_infos_dict: dict[str, list]
-                        if self.config.reward_model.launch_reward_fn_async:
-                            reward_tensor, reward_extra_infos_dict = ray.get(
-                                future_reward
-                            )
-                        batch.batch["instance_level_scores"] = reward_tensor
+                        if not self.config.actor_rollout_ref.rollout.with_reward:
+                            # we combine with rule-based rm
+                            reward_extra_infos_dict: dict[str, list]
 
-                        if reward_extra_infos_dict:
-                            batch.non_tensor_batch.update(
-                                {
-                                    k: np.array(v)
-                                    for k, v in reward_extra_infos_dict.items()
-                                }
-                            )
+                            if self.config.reward_model.launch_reward_fn_async:
+                                reward_tensor, reward_extra_infos_dict = ray.get(
+                                    future_reward
+                                )
+                            batch.batch["instance_level_scores"] = reward_tensor
 
-                        batch.batch["instance_level_rewards"] = batch.batch[
-                            "instance_level_scores"
-                        ]
+                            if reward_extra_infos_dict:
+                                batch.non_tensor_batch.update(
+                                    {
+                                        k: np.array(v)
+                                        for k, v in reward_extra_infos_dict.items()
+                                    }
+                                )
+
+                            batch.batch["instance_level_rewards"] = batch.batch[
+                                "instance_level_scores"
+                            ]
 
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get(

@@ -18,9 +18,11 @@ Rollout with diffusers models.
 
 import logging
 import os
+from collections import defaultdict
 from typing import TYPE_CHECKING, Generator, Optional
 
 import numpy as np
+import ray
 import torch
 from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
@@ -31,6 +33,7 @@ from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.torch_dtypes import PrecisionType
 
 from ....protocol import DataProto
+from ....trainer.ppo.reward import compute_reward_async
 from ....utils.lora import select_lora_modules
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
 from ...diffusers_model import (
@@ -114,6 +117,12 @@ class DiffusersSyncRollout(BaseRollout):
     @GPUMemoryLogger(role="diffusers rollout", logger=logger)
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
+        reward_fn = prompts.meta_info.pop("reward_fn", None)
+        if self.config.with_reward and reward_fn is None:
+            raise ValueError(
+                "reward_fn must be provided in meta_info for reward computation."
+            )
+
         if self._cached_prompt_embeds is None:
             self._cached_prompt_embeds = self.cache_prompt_embeds()
         negative_prompt_embeds = self._cached_prompt_embeds[
@@ -126,6 +135,9 @@ class DiffusersSyncRollout(BaseRollout):
         micro_batches = prompts.split(self.config.log_prob_micro_batch_size_per_gpu)
         generated_input_texts = []
         generated_results = []
+        reward_tensors = []
+        reward_extra_infos_dicts = defaultdict(list)
+        future_rewards = []
 
         seed = prompts.meta_info.get("seed", None)
         if seed is not None:
@@ -177,7 +189,21 @@ class DiffusersSyncRollout(BaseRollout):
                 },
                 batch_size=len(output.images),
             )
+            # compute micro_batch reward
+            if self.config.with_reward:
+                micro_batch.batch = TensorDict(
+                    {
+                        "responses": output.images,
+                    },
+                    batch_size=len(output.images),
+                )
+                future_reward = compute_reward_async.remote(
+                    data=micro_batch,
+                    reward_fn=reward_fn,
+                )
+                future_rewards.append(future_reward)
 
+            # concatenate generation result
             generated_results.append(result)
             generated_input_texts.extend(input_texts)
 
@@ -186,6 +212,25 @@ class DiffusersSyncRollout(BaseRollout):
             non_tensor_batch={"prompt": np.array(generated_input_texts)},
         )
         result.meta_info["cached_steps"] = result.batch["timesteps"].shape[1]
+
+        if self.config.with_reward:
+            # concatenate reward result batches
+            for future in future_rewards:
+                reward_tensor, reward_extra_infos_dict = ray.get(future)
+                reward_tensors.append(reward_tensor)
+                for k, v in reward_extra_infos_dict.items():
+                    reward_extra_infos_dicts[k].extend(v)
+
+            # we combine with rewards in result
+            result.batch["instance_level_scores"] = torch.cat(reward_tensors)
+            if reward_extra_infos_dicts:
+                result.non_tensor_batch.update(
+                    {k: np.array(v) for k, v in reward_extra_infos_dicts.items()}
+                )
+            result.batch["instance_level_rewards"] = result.batch[
+                "instance_level_scores"
+            ]
+
         return result
 
     def cache_prompt_embeds(
