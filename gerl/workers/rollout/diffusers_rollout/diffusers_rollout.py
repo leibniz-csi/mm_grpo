@@ -33,6 +33,7 @@ from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.torch_dtypes import PrecisionType
 
 from ....protocol import DataProto
+from ....trainer.ppo.reward import compute_reward_async
 from ....utils.lora import select_lora_modules
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
 from ...diffusers_model import (
@@ -42,7 +43,6 @@ from ...diffusers_model import (
 )
 from ..base import BaseRollout
 from .utils import get_negative_prompt_embedding
-from ....trainer.ppo.reward import compute_reward_async
 
 if TYPE_CHECKING:
     from diffusers import DiffusionPipeline

@@ -19,7 +19,7 @@
 We tested with the following machines:
 | GPU | Driver | CUDA |
 |--- | --- | --- |
-| A100 (80GB) | 530.30.02 | 12.1 |
+| A100 (80GB) | 530.30.02 | 12.2 |
 | H800 (80GB) | 535.161.08 | 12.2 |
 
 Install required packages:
