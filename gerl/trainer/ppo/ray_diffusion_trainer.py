@@ -432,6 +432,7 @@ class RayDiffusionPPOTrainer:
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info["validate"] = True
 
+            reward_extra_info = None
             if self.config.actor_rollout_ref.rollout.with_reward:
                 reward_tensor = test_output_gen_batch.batch["instance_level_scores"]
                 reward_extra_info = test_output_gen_batch.non_tensor_batch

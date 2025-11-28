@@ -817,12 +817,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             log_gpu_memory_usage("After switch to rollout mode", logger=logger)
 
         with simple_timer("generate_sequences", timing_generate):
-            if self.config.rollout.with_reward:
-                output = self.rollout.generate_sequences_with_batch_reward(
-                    prompts=prompts
-                )
-            else:
-                output = self.rollout.generate_sequences(prompts=prompts)
+            output = self.rollout.generate_sequences(prompts=prompts)
 
         if self._is_actor:
             loop.run_until_complete(self.trainer_mode())

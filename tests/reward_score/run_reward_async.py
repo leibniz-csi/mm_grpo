@@ -15,7 +15,7 @@
 
 """
 This script simulates async reward score computing via ray.remote,
-validating the asynchrony of `compute_reward_async` in `gerl\\trainer\\ppo\\reward.py`.
+validating the asynchrony of `compute_reward_async` in `gerl/trainer/ppo/reward.py`.
 """
 
 import time
