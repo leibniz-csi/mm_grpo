@@ -290,6 +290,7 @@ class DiffusersPPOActor(BasePPOActor):
 
                         if self.config.use_kl_loss:
                             ref_prev_sample_mean = model_inputs["ref_prev_sample_mean"]
+                            ref_prev_sample_mean = ref_prev_sample_mean[:, step]
                             # compute kl loss
                             kld = kl_penalty(
                                 prev_sample_mean, ref_prev_sample_mean, std_dev_t
