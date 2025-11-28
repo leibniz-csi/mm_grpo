@@ -226,9 +226,9 @@ def compute_policy_loss_flow_grpo(
 
     Args:
         old_log_prob (torch.Tensor):
-            Log-probabilities of actions under the old policy, shape (batch_size, steps, response_length).
+            Log-probabilities of actions under the old policy, shape (batch_size, response_length).
         log_prob (torch.Tensor):
-            Log-probabilities of actions under the current policy, shape (batch_size, steps, response_length).
+            Log-probabilities of actions under the current policy, shape (batch_size, response_length).
         advantages (torch.Tensor):
             Advantage estimates for each action, shape (batch_size,).
         config: `(verl.trainer.config.ActorConfig)`:

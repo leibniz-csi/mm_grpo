@@ -277,7 +277,7 @@ class DiffusersPPOActor(BasePPOActor):
 
                         policy_loss_fn = get_policy_loss_fn(loss_mode)
 
-                        # Compute policy loss (any function is expected to return 1 values)
+                        # Compute policy loss (any function is expected to return 2 values)
                         pg_loss, pg_metrics = policy_loss_fn(
                             old_log_prob=old_log_prob[:, step],
                             log_prob=log_prob,
