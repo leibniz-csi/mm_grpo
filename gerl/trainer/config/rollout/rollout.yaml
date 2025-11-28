@@ -22,7 +22,7 @@ image_width: 512
 
 # micro batch size for rollout
 # same as actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu if it exists
-micro_batch_size_per_gpu: ${oc.select:actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu,8}
+log_prob_micro_batch_size_per_gpu: ${oc.select:actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu,8}
 
 # inference steps
 num_inference_steps: 10

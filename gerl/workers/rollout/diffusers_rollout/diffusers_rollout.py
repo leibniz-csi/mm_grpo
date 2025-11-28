@@ -132,7 +132,7 @@ class DiffusersSyncRollout(BaseRollout):
             "negative_pooled_prompt_embeds"
         ].to(get_device_name())
 
-        micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
+        micro_batches = prompts.split(self.config.log_prob_micro_batch_size_per_gpu)
         generated_input_texts = []
         generated_results = []
         reward_tensors = []
@@ -180,7 +180,7 @@ class DiffusersSyncRollout(BaseRollout):
                 {
                     "responses": output.images,
                     "latents": output.all_latents,
-                    "old_log_probs": output.all_log_probs,
+                    "rollout_log_probs": output.all_log_probs,
                     "timesteps": output.all_timesteps,
                     "prompt_embeds": output.prompt_embeds,
                     "pooled_prompt_embeds": output.pooled_prompt_embeds,

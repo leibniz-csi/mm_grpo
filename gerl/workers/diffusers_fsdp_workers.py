@@ -856,10 +856,19 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         adapter_ctx = (
             self.actor.actor_module.disable_adapter() if is_lora else nullcontext()
         )
+        # we should always recompute old_log_probs when it is HybridEngine
+        data.meta_info["micro_batch_size"] = (
+            self.config.rollout.log_prob_micro_batch_size_per_gpu
+        )
         # perform recompute log_prob
         with adapter_ctx:
-            output = self.actor.compute_log_prob(data=data)
-        output = DataProto.from_dict(tensors={"old_log_probs": output})
+            old_log_probs, prev_sample_mean = self.actor.compute_log_prob(data=data)
+        output = DataProto.from_dict(
+            tensors={
+                "old_log_probs": old_log_probs,
+                "prev_sample_mean": prev_sample_mean,
+            }
+        )
 
         output = output.to("cpu")
 
@@ -879,7 +888,19 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
     @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="actor"))
     @DistProfiler.annotate(color="olive", role="ref_compute_log_prob")
     def compute_ref_log_prob(self, data: DataProto):
-        raise NotImplementedError("Ref log prob is not supported for Diffusers yet.")
+        if self._is_lora:
+            # if _is_lora, actor without lora applied is the ref
+            data.meta_info["is_lora"] = True
+            data = self.compute_log_prob(data)
+            # this prev_sample_mean is in fact ref_prev_sample_mean
+            data = DataProto.from_dict(
+                tensors={"ref_prev_sample_mean": data.batch["prev_sample_mean"]}
+            )
+            return data
+        assert self._is_ref
+        raise NotImplementedError(
+            "Ref worker log_prob computation is not implemented yet"
+        )
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, global_step=0, max_ckpt_to_keep=None):

@@ -525,23 +525,26 @@ class RayDiffusionPPOTrainer:
         }
 
         # create actor and rollout
+        actor_role = (
+            Role.ActorRolloutRef
+            if Role.ActorRolloutRef in self.role_worker_mapping
+            else Role.ActorRollout
+        )
         if self.hybrid_engine:
-            resource_pool = self.resource_pool_manager.get_resource_pool(
-                Role.ActorRollout
-            )
+            resource_pool = self.resource_pool_manager.get_resource_pool(actor_role)
             actor_rollout_cls = RayClassWithInitArgs(
-                cls=self.role_worker_mapping[Role.ActorRollout],
+                cls=self.role_worker_mapping[actor_role],
                 config=self.config.actor_rollout_ref,
-                role=str(Role.ActorRollout),
+                role=str(actor_role),
             )
-            self.resource_pool_to_cls[resource_pool][str(Role.ActorRollout)] = (
+            self.resource_pool_to_cls[resource_pool][str(actor_role)] = (
                 actor_rollout_cls
             )
         else:
             raise NotImplementedError
 
         # create reference policy if needed
-        if self.use_reference_policy:
+        if self.use_reference_policy and Role.RefPolicy in self.role_worker_mapping:
             resource_pool = self.resource_pool_manager.get_resource_pool(Role.RefPolicy)
             ref_policy_cls = RayClassWithInitArgs(
                 self.role_worker_mapping[Role.RefPolicy],
@@ -612,8 +615,13 @@ class RayDiffusionPPOTrainer:
             all_wg.update(spawn_wg)
 
         if self.use_reference_policy and not self.ref_in_actor:
-            self.ref_policy_wg = all_wg[str(Role.RefPolicy)]
-            self.ref_policy_wg.init_model()
+            if str(Role.RefPolicy) in all_wg:
+                self.ref_policy_wg = all_wg[str(Role.RefPolicy)]
+                self.ref_policy_wg.init_model()
+            else:
+                # Model engine: ActorRolloutRefWorker
+                assert str(Role.ActorRolloutRef) in all_wg, f"{all_wg.keys()=}"
+                self.ref_policy_wg = all_wg[str(Role.ActorRolloutRef)]
 
         self.rm_wg = None
         # initalization of rm_wg will be deprecated in the future
@@ -622,7 +630,7 @@ class RayDiffusionPPOTrainer:
             self.rm_wg.init_model()
 
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
-        self.actor_rollout_wg = all_wg[str(Role.ActorRollout)]
+        self.actor_rollout_wg = all_wg[str(actor_role)]
         self.actor_rollout_wg.init_model()
 
         # create async rollout manager and request scheduler
@@ -631,8 +639,20 @@ class RayDiffusionPPOTrainer:
             from verl.experimental.agent_loop import AgentLoopManager
 
             self.async_rollout_mode = True
+            if (
+                self.config.reward_model.enable
+                and self.config.reward_model.enable_resource_pool
+            ):
+                rm_resource_pool = self.resource_pool_manager.get_resource_pool(
+                    Role.RewardModel
+                )
+            else:
+                rm_resource_pool = None
+
             self.async_rollout_manager = AgentLoopManager(
-                config=self.config, worker_group=self.actor_rollout_wg, rm_wg=self.rm_wg
+                config=self.config,
+                worker_group=self.actor_rollout_wg,
+                rm_resource_pool=rm_resource_pool,
             )
 
     def _save_checkpoint(self):
@@ -783,6 +803,8 @@ class RayDiffusionPPOTrainer:
         # load checkpoint before doing anything
         self._load_checkpoint()
 
+        current_epoch = self.global_steps // len(self.train_dataloader)
+
         # perform validation before training
         # currently, we only support validation using the reward_function.
         if self.val_reward_fn is not None and self.config.trainer.get(
@@ -819,7 +841,7 @@ class RayDiffusionPPOTrainer:
         )
         next_step_profile = False
 
-        for epoch in range(self.config.trainer.total_epochs):
+        for epoch in range(current_epoch, self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 metrics = {}
                 timing_raw = {}
@@ -891,9 +913,16 @@ class RayDiffusionPPOTrainer:
                                     batch, self.reward_fn
                                 )
 
-                    # recompute old_log_probs
-                    need_recomputation = False
-                    if need_recomputation:
+                    rollout_corr_config = self.config.algorithm.get(
+                        "rollout_correction", None
+                    )
+                    bypass_recomputing_logprobs = (
+                        rollout_corr_config
+                        and rollout_corr_config.get("bypass_mode", False)
+                    )
+                    if bypass_recomputing_logprobs:
+                        batch.batch["old_log_probs"] = batch.batch["rollout_log_probs"]
+                    else:  # Recompute old_log_probs
                         with marked_timer("old_log_prob", timing_raw, color="blue"):
                             old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                             batch = batch.union(old_log_prob)
@@ -901,6 +930,21 @@ class RayDiffusionPPOTrainer:
                     assert "old_log_probs" in batch.batch, (
                         f'"old_log_prob" not in {batch.batch.keys()=}'
                     )
+
+                    if self.use_reference_policy:
+                        # compute reference log_prob
+                        with marked_timer(
+                            str(Role.RefPolicy), timing_raw, color="olive"
+                        ):
+                            if not self.ref_in_actor:
+                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(
+                                    batch
+                                )
+                            else:
+                                ref_log_prob = (
+                                    self.actor_rollout_wg.compute_ref_log_prob(batch)
+                                )
+                            batch = batch.union(ref_log_prob)
 
                     with marked_timer("adv", timing_raw, color="brown"):
                         if not self.config.actor_rollout_ref.rollout.with_reward:
@@ -925,10 +969,15 @@ class RayDiffusionPPOTrainer:
                                 "instance_level_scores"
                             ]
 
+                        # compute advantages, executed on the driver process
+                        norm_adv_by_std_in_grpo = self.config.algorithm.get(
+                            "norm_adv_by_std_in_grpo", True
+                        )  # GRPO adv normalization factor
+
                         batch = compute_advantage(
                             batch,
                             adv_estimator=self.config.algorithm.adv_estimator,
-                            norm_adv_by_std_in_grpo=self.config.algorithm.norm_adv_by_std_in_grpo,
+                            norm_adv_by_std_in_grpo=norm_adv_by_std_in_grpo,
                             global_std=self.config.algorithm.global_std,
                             config=self.config.algorithm,
                         )
@@ -1023,10 +1072,6 @@ class RayDiffusionPPOTrainer:
                         batch=batch, timing_raw=timing_raw, n_gpus=n_gpus
                     )
                 )
-
-                # this is experimental and may be changed/removed in the future in favor of a general-purpose one
-                # if isinstance(self.train_dataloader.sampler, AbstractCurriculumSampler):
-                #     self.train_dataloader.sampler.update(batch=batch)
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)

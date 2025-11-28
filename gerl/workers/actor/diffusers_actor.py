@@ -170,10 +170,46 @@ class DiffusersPPOActor(BasePPOActor):
         return grad_norm
 
     @GPUMemoryLogger(role="diffusers actor", logger=logger)
-    def compute_log_prob(self, data: DataProto) -> torch.Tensor:
-        """Compute the log probability of the responses"""
-        # for flow-grpo, we do not need to recompute log probs
-        raise NotImplementedError()
+    def compute_log_prob(self, data: DataProto) -> tuple[torch.Tensor, torch.Tensor]:
+        """Compute the log probability and previous sample mean for each action in the data."""
+        # set to eval
+        self.actor_module.eval()
+
+        micro_batch_size = data.meta_info["micro_batch_size"]
+        select_keys = [
+            "latents",
+            "timesteps",
+            "prompt_embeds",
+            "pooled_prompt_embeds",
+            "negative_prompt_embeds",
+            "negative_pooled_prompt_embeds",
+        ]
+        data = data.select(batch_keys=select_keys)
+        micro_batches = data.split(micro_batch_size)
+
+        log_probs_lst = []
+        prev_sample_mean_lst = []
+        for micro_batch in micro_batches:
+            micro_batch = micro_batch.to(get_device_id())
+            log_probs_lst_steps = []
+            prev_sample_mean_lst_steps = []
+            for step in range(micro_batch.meta_info["cached_steps"]):
+                model_inputs = {**micro_batch.batch, **micro_batch.non_tensor_batch}
+                with torch.no_grad():
+                    log_probs, prev_sample_mean, _ = self._forward_micro_batch(
+                        model_inputs, step=step
+                    )
+                log_probs_lst_steps.append(log_probs)
+                prev_sample_mean_lst_steps.append(prev_sample_mean)
+            log_probs_lst_steps = torch.stack(log_probs_lst_steps, dim=1)
+            prev_sample_mean_lst_steps = torch.stack(prev_sample_mean_lst_steps, dim=1)
+            log_probs_lst.append(log_probs_lst_steps)
+            prev_sample_mean_lst.append(prev_sample_mean_lst_steps)
+
+        log_probs = torch.concat(log_probs_lst, dim=0)
+        prev_sample_mean = torch.concat(prev_sample_mean_lst, dim=0)
+
+        return log_probs, prev_sample_mean
 
     @GPUMemoryLogger(role="diffusers actor", logger=logger)
     def update_policy(self, data: DataProto):
@@ -192,6 +228,8 @@ class DiffusersPPOActor(BasePPOActor):
             "negative_prompt_embeds",
             "negative_pooled_prompt_embeds",
         ]
+        if self.config.use_kl_loss:
+            select_keys.append("ref_prev_sample_mean")
 
         data = data.select(batch_keys=select_keys)
 
@@ -233,37 +271,29 @@ class DiffusersPPOActor(BasePPOActor):
                             self._forward_micro_batch(model_inputs, step=step)
                         )
 
-                        if self.config.use_kl_loss:
-                            with torch.no_grad():
-                                if self.config.model_config.lora_rank > 0:
-                                    with self.actor_module.disable_adapter():
-                                        _, prev_sample_mean_ref, _ = (
-                                            self._forward_micro_batch(
-                                                model_inputs, step=step
-                                            )
-                                        )
-                                else:
-                                    # TODO (Mike): support non-lora case
-                                    raise NotImplementedError()
-
-                        policy_loss_fn = get_policy_loss_fn(
-                            self.config.policy_loss.loss_mode
+                        loss_mode = self.config.policy_loss.get(
+                            "loss_mode", "flow_grpo"
                         )
 
-                        # Compute policy loss (any function is expected to return 1 values)
-                        pg_loss = policy_loss_fn(
+                        policy_loss_fn = get_policy_loss_fn(loss_mode)
+
+                        # Compute policy loss (any function is expected to return 2 values)
+                        pg_loss, pg_metrics = policy_loss_fn(
                             old_log_prob=old_log_prob[:, step],
                             log_prob=log_prob,
                             advantages=advantages,
                             config=self.config,
                         )
+                        micro_batch_metrics.update(pg_metrics)
 
                         policy_loss = pg_loss
 
                         if self.config.use_kl_loss:
+                            ref_prev_sample_mean = model_inputs["ref_prev_sample_mean"]
+                            ref_prev_sample_mean = ref_prev_sample_mean[:, step]
                             # compute kl loss
                             kld = kl_penalty(
-                                prev_sample_mean, prev_sample_mean_ref, std_dev_t
+                                prev_sample_mean, ref_prev_sample_mean, std_dev_t
                             )
                             kl_loss = kld.mean()
 
@@ -292,5 +322,4 @@ class DiffusersPPOActor(BasePPOActor):
                 mini_batch_metrics = {"actor/grad_norm": grad_norm.detach().item()}
                 append_to_dict(metrics, mini_batch_metrics)
         self.actor_optimizer.zero_grad()
-
         return metrics
