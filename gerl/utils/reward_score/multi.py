@@ -23,7 +23,7 @@ from PIL import Image
 from .scorer import Scorer
 
 AVAILABLE_SCORERS = {
-    "paddle-ocr": ("ocr", "PaddleOcrScorer"),
+    "paddle-ocr": ("ocr", "PaddleOCRScorer"),
     # "jpeg-imcompressibility": ("jpeg_imcompressibility", "JpegImcompressibilityScorer"),
     "qwenvl-ocr-vllm": ("vllm", "QwenVLOCRVLLMScorer"),
     # "pickscore": ("pickscore", "PickScoreScorer"),

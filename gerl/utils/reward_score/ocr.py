@@ -25,7 +25,7 @@ from PIL import Image
 from .scorer import Scorer
 
 
-class PaddleOcrScorer(Scorer):
+class PaddleOCRScorer(Scorer):
     def __init__(self, use_gpu: bool = False):
         """
         OCR reward calculator
@@ -102,7 +102,7 @@ def compute_score(images, prompts):
     """
     Compute OCR reward score using PaddleOCR for a batch of images and prompts.
     """
-    scorer = PaddleOcrScorer()
+    scorer = PaddleOCRScorer()
     scores = scorer(images, prompts)
 
     return scores
@@ -115,7 +115,7 @@ def test_paddle_ocr_scorer():
         'New York Skyline with "Hello World" written with fireworks on the sky'
     )
     # Instantiate scorer
-    scorer = PaddleOcrScorer(use_gpu=False)
+    scorer = PaddleOCRScorer(use_gpu=False)
     # Call scorer and print result
     reward = scorer([example_image], [example_prompt])
     print(f"OCR Reward: {reward}")

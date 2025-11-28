@@ -117,90 +117,11 @@ class DiffusersSyncRollout(BaseRollout):
     @GPUMemoryLogger(role="diffusers rollout", logger=logger)
     @torch.no_grad()
     def generate_sequences(self, prompts: DataProto) -> DataProto:
-        if self._cached_prompt_embeds is None:
-            self._cached_prompt_embeds = self.cache_prompt_embeds()
-        negative_prompt_embeds = self._cached_prompt_embeds[
-            "negative_prompt_embeds"
-        ].to(get_device_name())
-        negative_pooled_prompt_embeds = self._cached_prompt_embeds[
-            "negative_pooled_prompt_embeds"
-        ].to(get_device_name())
-
-        micro_batches = prompts.split(self.config.micro_batch_size_per_gpu)
-        generated_input_texts = []
-        generated_results = []
-
-        seed = prompts.meta_info.get("seed", None)
-        if seed is not None:
-            generator = torch.Generator(device=get_device_name()).manual_seed(seed)
-        else:
-            generator = None
-
-        for micro_batch in micro_batches:
-            input_texts = micro_batch.non_tensor_batch["prompt"].tolist()
-
-            noise_level = micro_batch.meta_info.get(
-                "noise_level", self.config.noise_level
-            )
-            num_inference_steps = micro_batch.meta_info.get(
-                "num_inference_steps", self.config.num_inference_steps
-            )
-
-            output = self.pipeline(
-                input_texts,
-                height=self.config.image_height,
-                width=self.config.image_width,
-                num_inference_steps=num_inference_steps,
-                guidance_scale=self.config.guidance_scale,
-                generator=generator,
-                max_sequence_length=self.config.prompt_length,
-                negative_prompt_embeds=negative_prompt_embeds.repeat(
-                    len(input_texts), 1, 1
-                ),
-                negative_pooled_prompt_embeds=negative_pooled_prompt_embeds.repeat(
-                    len(input_texts), 1
-                ),
-                output_type="pt",
-                noise_level=noise_level,
-                sde_window_size=self.config.sde_window_size,
-                sde_window_range=self.config.sde_window_range,
-                sde_type=self.config.sde_type,
-            )
-
-            result = TensorDict(
-                {
-                    "responses": output.images,
-                    "latents": output.all_latents,
-                    "old_log_probs": output.all_log_probs,
-                    "timesteps": output.all_timesteps,
-                    "prompt_embeds": output.prompt_embeds,
-                    "pooled_prompt_embeds": output.pooled_prompt_embeds,
-                    "negative_prompt_embeds": output.negative_prompt_embeds,
-                    "negative_pooled_prompt_embeds": output.negative_pooled_prompt_embeds,
-                },
-                batch_size=len(output.images),
-            )
-
-            generated_results.append(result)
-            generated_input_texts.extend(input_texts)
-
-        result = DataProto(
-            batch=torch.cat(generated_results),
-            non_tensor_batch={"prompt": np.array(generated_input_texts)},
-        )
-        result.meta_info["cached_steps"] = result.batch["timesteps"].shape[1]
-        return result
-
-    @GPUMemoryLogger(role="diffusers rollout async-reward", logger=logger)
-    @torch.no_grad()
-    def generate_sequences_with_batch_reward(
-        self,
-        prompts: DataProto,
-    ) -> DataProto:
         reward_fn = prompts.meta_info.pop("reward_fn", None)
-        assert reward_fn is not None, (
-            "reward_fn must be provided in meta_info for reward computation."
-        )
+        if self.config.with_reward and reward_fn is None:
+            raise ValueError(
+                "reward_fn must be provided in meta_info for reward computation."
+            )
 
         if self._cached_prompt_embeds is None:
             self._cached_prompt_embeds = self.cache_prompt_embeds()
@@ -268,30 +189,23 @@ class DiffusersSyncRollout(BaseRollout):
                 },
                 batch_size=len(output.images),
             )
-
             # compute micro_batch reward
-            micro_batch.batch = TensorDict(
-                {
-                    "responses": output.images,
-                },
-                batch_size=len(output.images),
-            )
-            future_reward = compute_reward_async.remote(
-                data=micro_batch,
-                reward_fn=reward_fn,
-            )
-            future_rewards.append(future_reward)
+            if self.config.with_reward:
+                micro_batch.batch = TensorDict(
+                    {
+                        "responses": output.images,
+                    },
+                    batch_size=len(output.images),
+                )
+                future_reward = compute_reward_async.remote(
+                    data=micro_batch,
+                    reward_fn=reward_fn,
+                )
+                future_rewards.append(future_reward)
 
             # concatenate generation result
             generated_results.append(result)
             generated_input_texts.extend(input_texts)
-
-        # concatenate reward result batches
-        for future in future_rewards:
-            reward_tensor, reward_extra_infos_dict = ray.get(future)
-            reward_tensors.append(reward_tensor)
-            for k, v in reward_extra_infos_dict.items():
-                reward_extra_infos_dicts[k].extend(v)
 
         result = DataProto(
             batch=torch.cat(generated_results),
@@ -299,13 +213,23 @@ class DiffusersSyncRollout(BaseRollout):
         )
         result.meta_info["cached_steps"] = result.batch["timesteps"].shape[1]
 
-        # we combine with rewards in result
-        result.batch["instance_level_scores"] = torch.cat(reward_tensors)
-        if reward_extra_infos_dicts:
-            result.non_tensor_batch.update(
-                {k: np.array(v) for k, v in reward_extra_infos_dicts.items()}
-            )
-        result.batch["instance_level_rewards"] = result.batch["instance_level_scores"]
+        if self.config.with_reward:
+            # concatenate reward result batches
+            for future in future_rewards:
+                reward_tensor, reward_extra_infos_dict = ray.get(future)
+                reward_tensors.append(reward_tensor)
+                for k, v in reward_extra_infos_dict.items():
+                    reward_extra_infos_dicts[k].extend(v)
+
+            # we combine with rewards in result
+            result.batch["instance_level_scores"] = torch.cat(reward_tensors)
+            if reward_extra_infos_dicts:
+                result.non_tensor_batch.update(
+                    {k: np.array(v) for k, v in reward_extra_infos_dicts.items()}
+                )
+            result.batch["instance_level_rewards"] = result.batch[
+                "instance_level_scores"
+            ]
 
         return result
 

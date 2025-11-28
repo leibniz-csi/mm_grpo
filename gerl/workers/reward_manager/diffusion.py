@@ -60,20 +60,9 @@ class DiffusionRewardManager(AbstractRewardManager):
     ) -> torch.Tensor | dict[str, Any]:
         """We will expand this function gradually based on the available datasets"""
 
-        # TODO: not supported yet.
-        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+        # TODO: If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if "rm_scores" in data.batch.keys():
-            if return_dict:
-                reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
-                reward_extra_info = {
-                    key: data.non_tensor_batch[key] for key in reward_extra_keys
-                }
-                return {
-                    "reward_tensor": data.batch["rm_scores"],
-                    "reward_extra_info": reward_extra_info,
-                }
-            else:
-                return data.batch["rm_scores"]
+            raise NotImplementedError
 
         reward_tensor = torch.zeros(len(data.batch["responses"]), dtype=torch.float32)
         reward_extra_info = defaultdict(list)
@@ -174,26 +163,15 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
     ) -> torch.Tensor | dict[str, Any]:
         """We will expand this function gradually based on the available datasets"""
 
-        # TODO: not supported yet.
-        # If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
+        # TODO: If there is rm score, we directly return rm score. Otherwise, we compute via rm_score_fn
         if "rm_scores" in data.batch.keys():
-            if return_dict:
-                reward_extra_keys = data.meta_info.get("reward_extra_keys", [])
-                reward_extra_info = {
-                    key: data.non_tensor_batch[key] for key in reward_extra_keys
-                }
-                return {
-                    "reward_tensor": data.batch["rm_scores"],
-                    "reward_extra_info": reward_extra_info,
-                }
-            else:
-                return data.batch["rm_scores"]
+            raise NotImplementedError
 
         reward_extra_info = defaultdict(list)
 
         # get batch reward scores
         data_sources = data.non_tensor_batch[self.reward_fn_key]
-        prompts = data.non_tensor_batch["prompt"]  # print use
+        prompts = data.non_tensor_batch["prompt"]
         response_images = data.batch["responses"]
         ground_truths = [
             item.non_tensor_batch["reward_model"].get(

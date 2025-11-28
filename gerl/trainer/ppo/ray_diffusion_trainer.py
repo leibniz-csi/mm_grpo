@@ -344,10 +344,7 @@ class RayDiffusionPPOTrainer:
         )
 
         # For agent loop or async reward compute during rollout, we need reward model keys to compute score.
-        if (
-            self.async_rollout_mode
-            or self.config.actor_rollout_ref.rollout.gen_with_reward
-        ):
+        if self.async_rollout_mode or self.config.actor_rollout_ref.rollout.with_reward:
             gen_batch.non_tensor_batch.update(batch.non_tensor_batch)
 
         return gen_batch
@@ -413,7 +410,7 @@ class RayDiffusionPPOTrainer:
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
             if not self.async_rollout_mode:
-                if self.config.actor_rollout_ref.rollout.gen_with_reward:
+                if self.config.actor_rollout_ref.rollout.with_reward:
                     test_gen_batch.meta_info["reward_fn"] = self.val_reward_fn
                     print(
                         f"updated test_gen_batch meta info: {test_gen_batch.meta_info}"
@@ -435,7 +432,7 @@ class RayDiffusionPPOTrainer:
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info["validate"] = True
 
-            if self.config.actor_rollout_ref.rollout.gen_with_reward:
+            if self.config.actor_rollout_ref.rollout.with_reward:
                 reward_tensor = test_output_gen_batch.batch["instance_level_scores"]
                 reward_extra_info = test_output_gen_batch.non_tensor_batch
             else:
@@ -857,7 +854,7 @@ class RayDiffusionPPOTrainer:
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
                         if not self.async_rollout_mode:
-                            if self.config.actor_rollout_ref.rollout.gen_with_reward:
+                            if self.config.actor_rollout_ref.rollout.with_reward:
                                 gen_batch_output.meta_info["reward_fn"] = self.reward_fn
                             gen_batch_output = self.actor_rollout_wg.generate_sequences(
                                 gen_batch_output,
@@ -878,12 +875,10 @@ class RayDiffusionPPOTrainer:
                     )
                     batch = batch.union(gen_batch_output)
 
-                    if not self.config.actor_rollout_ref.rollout.gen_with_reward:
+                    if not self.config.actor_rollout_ref.rollout.with_reward:
                         with marked_timer("reward", timing_raw, color="yellow"):
-                            # TODO: not supported yet, compute reward model score
                             if self.use_rm and "rm_scores" not in batch.batch.keys():
-                                reward_tensor = self.rm_wg.compute_rm_score(batch)
-                                batch = batch.union(reward_tensor)
+                                raise NotImplementedError  # TODO： reward model worker
 
                             if self.config.reward_model.launch_reward_fn_async:
                                 future_reward = compute_reward_async.remote(
@@ -907,7 +902,7 @@ class RayDiffusionPPOTrainer:
                     )
 
                     with marked_timer("adv", timing_raw, color="brown"):
-                        if not self.config.actor_rollout_ref.rollout.gen_with_reward:
+                        if not self.config.actor_rollout_ref.rollout.with_reward:
                             # we combine with rule-based rm
                             reward_extra_infos_dict: dict[str, list]
 

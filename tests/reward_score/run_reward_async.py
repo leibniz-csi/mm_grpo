@@ -43,9 +43,8 @@ def compute_reward_async(delay):
 
 def test_compute_reward_async():
     ray.init(include_dashboard=False)
-    # time.sleep(2)  # wait for ray init
 
-    # Test asynchrous reward computation
+    # Test asynchronous reward computation
     # Launch multiple async reward fns with varying delays
     start_time = time.time()
     futures = [compute_reward_async.remote(i + 1) for i in range(5)]
