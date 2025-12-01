@@ -49,6 +49,8 @@ class DiffusionActorConfig(BaseConfig):
 
     Args:
         strategy (str): Training strategy. Must be specified.
+        nnodes (int): Number of nodes for actor. (For standalone mode only.)
+        n_gpus_per_node (int): Number of GPUs per node for actor. (For standalone mode only.)
         ppo_mini_batch_size (int): Mini-batch size for PPO training.
         ppo_micro_batch_size_per_gpu (int): Micro-batch size per GPU for PPO training.
         shuffle_micro_batch (bool): Whether to shuffle micro-batches during training.
@@ -68,6 +70,8 @@ class DiffusionActorConfig(BaseConfig):
     }
 
     strategy: str = MISSING
+    nnodes: int = 0
+    n_gpus_per_node: int = 0
     ppo_mini_batch_size: int = 8
     ppo_micro_batch_size_per_gpu: int = 8
     shuffle_micro_batch: bool = False

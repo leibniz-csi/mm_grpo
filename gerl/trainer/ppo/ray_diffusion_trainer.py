@@ -139,12 +139,14 @@ class RayDiffusionPPOTrainer:
         self.val_reward_fn = val_reward_fn
 
         self.hybrid_engine = config.actor_rollout_ref.hybrid_engine
-        assert self.hybrid_engine, "Currently, only support hybrid engine"
 
         if self.hybrid_engine:
             assert Role.ActorRollout in role_worker_mapping, (
                 f"{role_worker_mapping.keys()=}"
             )
+        else:
+            assert Role.Actor in role_worker_mapping, f"{role_worker_mapping.keys()=}"
+            assert Role.Rollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"
 
         self.role_worker_mapping = role_worker_mapping
         self.resource_pool_manager = resource_pool_manager
@@ -636,24 +638,7 @@ class RayDiffusionPPOTrainer:
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
-            from verl.experimental.agent_loop import AgentLoopManager
-
-            self.async_rollout_mode = True
-            if (
-                self.config.reward_model.enable
-                and self.config.reward_model.enable_resource_pool
-            ):
-                rm_resource_pool = self.resource_pool_manager.get_resource_pool(
-                    Role.RewardModel
-                )
-            else:
-                rm_resource_pool = None
-
-            self.async_rollout_manager = AgentLoopManager(
-                config=self.config,
-                worker_group=self.actor_rollout_wg,
-                rm_resource_pool=rm_resource_pool,
-            )
+            raise NotImplementedError("async rollout is not implemented yet")
 
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
