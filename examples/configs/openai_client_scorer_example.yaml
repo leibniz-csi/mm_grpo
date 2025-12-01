@@ -1,0 +1,85 @@
+# Example configuration for using OpenAI Client Scorer
+# This example shows how to use OpenRouter with Gemini Flash for reward scoring
+
+data:
+  # Specify openai-client as the reward function
+  reward_fn: ["openai-client"]
+  reward_fn_key: "reward_fn"
+  train_files: ["dataset/your_train_data.jsonl"]
+  val_files: ["dataset/your_val_data.jsonl"]
+
+reward_model:
+  reward_manager: "diffusion-batch"
+
+  # Configure OpenAI Client Scorer parameters
+  reward_kwargs:
+    # API Configuration
+    base_url: "https://openrouter.ai/api/v1"
+    # api_key will be read from OPENAI_API_KEY environment variable
+    model: "google/gemini-flash-1.5"
+
+    # System and Evaluation Prompts
+    system_prompt: "You are an expert image quality evaluator. Provide accurate and objective assessments."
+
+    # Use {prompt} as placeholder for the image generation prompt
+    evaluation_prompt: |
+      Evaluate the quality of this generated image based on the following criteria:
+      Target: {prompt}
+
+      Rate the image on a scale from 0.0 to 1.0 where:
+      - 1.0: Perfect match to the prompt with high quality
+      - 0.7-0.9: Good quality with minor issues
+      - 0.4-0.6: Acceptable but with noticeable issues
+      - 0.0-0.3: Poor quality or doesn't match prompt
+
+    # Structured Output Configuration
+    use_instructor: true # Use instructor for structured generation (requires: pip install instructor)
+    score_key: "score" # Key in response schema that contains the score
+
+    # Variance Reduction Settings
+    k_samples: 3 # Generate 3 scores per image
+    aggregation_method: "trimmed_mean" # Options: mean, median, trimmed_mean, iqm
+    trimmed_mean_proportion: 0.1 # Trim 10% from each end (for trimmed_mean)
+
+    # Model Parameters
+    max_tokens: 512
+    temperature: 0.7
+
+    # Retry Configuration
+    max_retries: 3
+    retry_min_wait: 2.0
+    retry_max_wait: 20.0
+    api_timeout: 180.0
+
+    # Extra body parameters (optional, e.g., for OpenRouter reasoning)
+    # extra_body:
+    #   reasoning:
+    #     effort: "medium"
+    #     exclude: true
+# Alternative: Using local VLLM endpoint
+# reward_model:
+#   reward_kwargs:
+#     base_url: "http://localhost:8000/v1"
+#     model: "Qwen/Qwen2-VL-7B-Instruct"
+#     api_key: "EMPTY"
+#     k_samples: 1
+#     aggregation_method: "mean"
+
+# Alternative: Using OpenAI API
+# reward_model:
+#   reward_kwargs:
+#     base_url: "https://api.openai.com/v1"
+#     model: "gpt-4o-mini"
+#     # Set OPENAI_API_KEY environment variable
+#     k_samples: 2
+#     aggregation_method: "median"
+
+# Alternative: Using structured output with Pydantic
+# Note: Requires defining a custom response_format in code
+# reward_model:
+#   reward_kwargs:
+#     base_url: "https://api.openai.com/v1"
+#     model: "gpt-4o-mini"
+#     # response_format: ScoreResponse  # Define Pydantic model in code
+#     evaluation_prompt: "Evaluate this image. Return JSON with 'score' (float 0-1) and 'reasoning' (string)."
+
