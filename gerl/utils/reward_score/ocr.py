@@ -26,19 +26,19 @@ from .scorer import Scorer
 
 
 class PaddleOCRScorer(Scorer):
-    def __init__(self, use_gpu: bool = False):
+    def __init__(self):
         """
         OCR reward calculator
-        :param use_gpu: Whether to use GPU acceleration for PaddleOCR
         """
         from paddleocr import PaddleOCR
 
-        # TODO (susan): assign specific GPU id?
         self.ocr = PaddleOCR(
-            use_angle_cls=False,
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
             lang="en",
-            use_gpu=use_gpu,
-            show_log=False,  # Disable unnecessary log output
+            ocr_version="PP-OCRv5",
+            device="cpu",
         )
 
     @torch.no_grad()
@@ -70,13 +70,18 @@ class PaddleOCRScorer(Scorer):
 
             try:
                 # OCR recognition
-                result = self.ocr.ocr(img, cls=False)
-                # Extract recognized text (handle possible multi-line results)
-                recognized_text = (
-                    "".join([res[1][0] if res[1][1] > 0 else "" for res in result[0]])
-                    if result[0]
-                    else ""
-                )
+                result = self.ocr.predict(img)
+                recognized_text = ""
+                if result[0]:
+                    rec_texts = result[0]["rec_texts"]
+                    rec_scores = result[0]["rec_scores"]
+                    # Extract recognized text (handle possible multi-line results)
+                    recognized_text = "".join(
+                        [
+                            rec_texts[idx] if score > 0 else ""
+                            for idx, score in enumerate(rec_scores)
+                        ]
+                    )
 
                 recognized_text = recognized_text.replace(" ", "").lower()
                 prompt = prompt.replace(" ", "").lower()
@@ -111,11 +116,10 @@ def compute_score(images, prompts):
 def test_paddle_ocr_scorer():
     example_image_path = "assets/generated_nyc.jpg"
     example_image = Image.open(example_image_path)
-    example_prompt = (
-        'New York Skyline with "Hello World" written with fireworks on the sky'
-    )
+    # original prompt: 'New York Skyline with "Hello World" written with fireworks on the sky'
+    example_prompt = "Hello World"
     # Instantiate scorer
-    scorer = PaddleOCRScorer(use_gpu=False)
+    scorer = PaddleOCRScorer()
     # Call scorer and print result
     reward = scorer([example_image], [example_prompt])
     print(f"OCR Reward: {reward}")
