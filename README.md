@@ -1,6 +1,8 @@
-# MM-GRPO
+# MM-GRPO (gerl)
+
 An easy-to-use and fast library to support RL training for multi-modal generative models, built on top of verl, vLLM, and diffusers.
 
+> **Package Name**: `gerl` - Generative RL for multi-modal models
 
 ## Key Features
 
@@ -9,6 +11,7 @@ An easy-to-use and fast library to support RL training for multi-modal generativ
 - Compatible with diffusion models from `diffusers`.
 
 ### Supported Algorithms
+
 - [x] [Flow-GRPO](https://arxiv.org/abs/2505.05470)
 - [x] Flow-GRPO-Fast
 - [ ] [Mix-GRPO](https://arxiv.org/html/2507.21802v1) (coming soon)
@@ -23,11 +26,7 @@ An easy-to-use and fast library to support RL training for multi-modal generativ
 - [x] [PaddleOCR](https://arxiv.org/abs/2109.03144)
 - [x] [Qwen2.5VL-OCR](https://arxiv.org/abs/2502.13923)
 
-
-
-
-*Note: This repository is continuously updated. New models, rewards, and algorithms will be added soon.*
-
+_Note: This repository is continuously updated. New models, rewards, and algorithms will be added soon._
 
 ## Get Started
 
@@ -35,25 +34,36 @@ An easy-to-use and fast library to support RL training for multi-modal generativ
 
 **Requirements**
 
-- install necessary packages first by 
-  ```bash
-  pip install -r requirements.txt
-  ```
-- install `verl` main branch by 
-  ```bash
-  git clone https://github.com/volcengine/verl.git && cd verl && pip install -e .
-  ```
+- Python 3.10 or higher (Python 3.12 recommended)
+- [uv](https://docs.astral.sh/uv/) package manager
 
 **Environment Setup**
 
-Clone this repository:
-```bash
-git clone https://github.com/leibniz-csi/mm_grpo.git && cd mm_grpo
+1. Install uv if you haven't already:
 
-# install other required packages for specific rewards, e.g., for Paddle-OCR reward
-# pip install paddlepaddle==2.6.2 paddleocr==2.9.1 python-Levenshtein
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
+2. Clone this repository:
+
+```bash
+git clone https://github.com/leibniz-csi/mm_grpo.git && cd mm_grpo
+```
+
+3. Install the package and dependencies:
+
+```bash
+# Install with default dependency groups (includes wandb)
+uv sync
+
+# Or install with additional dependency groups
+uv sync --group dev  # for development tools
+uv sync --group ocr  # for PaddleOCR support
+uv sync --all-groups # install all dependency groups
+```
+
+The package will automatically install `verl` from the upstream Git repository as configured in `pyproject.toml`.
 
 ### Quick Start
 
@@ -61,16 +71,20 @@ git clone https://github.com/leibniz-csi/mm_grpo.git && cd mm_grpo
 
 Below we provide examples to post-train SD-3.5-M on OCR task using OCR reward.
 
-1. Dataset
+1. **Dataset**
 
 Download OCR dataset from [Flow-GRPO](https://github.com/yifan123/flow_grpo/tree/main/dataset/ocr) and place it under `dataset` folder.
-<br>
+
 During training, denote paths in configs `data.train_files` and `data.val_files`.
 
-2. Start Training
+2. **Start Training**
 
-We provide scripts for quick start:
+The package provides a command-line interface via the `gerl_flowgrpo` script:
+
 ```bash
+# Activate the uv environment
+source .venv/bin/activate  # or use: uv run
+
 # SD3 + Flow-GRPO
 bash examples/flowgrpo_trainer/run_sd3.sh
 
@@ -78,8 +92,23 @@ bash examples/flowgrpo_trainer/run_sd3.sh
 bash examples/flowgrpo_trainer/run_sd3_fast.sh
 ```
 
+Alternatively, you can run commands directly with uv:
+
+```bash
+# Run without activating the virtual environment
+uv run gerl_flowgrpo [args]
+
+# Or use the example scripts directly
+uv run bash examples/flowgrpo_trainer/run_sd3.sh
+```
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on how to contribute to this project.
 
 ## Acknowledgement
+
 We appreciate the contribution of following works:
+
 - [verl](https://github.com/volcengine/verl)
 - [Flow-GRPO](https://github.com/yifan123/flow_grpo)

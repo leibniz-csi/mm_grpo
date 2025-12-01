@@ -48,7 +48,7 @@ from verl.utils.rollout_skip import RolloutSkip
 
 from ...protocol import DataProto
 from ...utils.tracking import ValidationGenerationsLogger
-from ..config.algorithm import AlgoConfig
+from ..config import AlgoConfig
 from .core_algos import (
     AdvantageEstimator,
     compute_flow_grpo_outcome_advantage,
@@ -142,9 +142,7 @@ class RayDiffusionPPOTrainer:
         assert self.hybrid_engine, "Currently, only support hybrid engine"
 
         if self.hybrid_engine:
-            assert Role.ActorRollout in role_worker_mapping, (
-                f"{role_worker_mapping.keys()=}"
-            )
+            assert Role.ActorRollout in role_worker_mapping, f"{role_worker_mapping.keys()=}"
 
         self.role_worker_mapping = role_worker_mapping
         self.resource_pool_manager = resource_pool_manager
@@ -165,9 +163,7 @@ class RayDiffusionPPOTrainer:
 
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
 
-    def _create_dataloader(
-        self, train_dataset, val_dataset, collate_fn, train_sampler: Optional[Sampler]
-    ):
+    def _create_dataloader(self, train_dataset, val_dataset, collate_fn, train_sampler: Optional[Sampler]):
         """
         Creates the train and validation dataloaders.
         """
@@ -176,9 +172,7 @@ class RayDiffusionPPOTrainer:
 
         self.train_dataloader = StatefulDataLoader(
             dataset=self.train_dataset,
-            batch_size=self.config.data.get(
-                "gen_batch_size", self.config.data.train_batch_size
-            ),
+            batch_size=self.config.data.get("gen_batch_size", self.config.data.train_batch_size),
             num_workers=num_workers,
             drop_last=True,
             collate_fn=collate_fn,
@@ -206,9 +200,7 @@ class RayDiffusionPPOTrainer:
             f"{len(self.val_dataloader)}"
         )
 
-        total_training_steps = (
-            len(self.train_dataloader) * self.config.trainer.total_epochs
-        )
+        total_training_steps = len(self.train_dataloader) * self.config.trainer.total_epochs
 
         if self.config.trainer.total_training_steps is not None:
             total_training_steps = self.config.trainer.total_training_steps
@@ -220,13 +212,9 @@ class RayDiffusionPPOTrainer:
             OmegaConf.set_struct(self.config, True)
             with open_dict(self.config):
                 if OmegaConf.select(self.config, "actor_rollout_ref.actor.optim"):
-                    self.config.actor_rollout_ref.actor.optim.total_training_steps = (
-                        total_training_steps
-                    )
+                    self.config.actor_rollout_ref.actor.optim.total_training_steps = total_training_steps
         except Exception as e:
-            print(
-                f"Warning: Could not set total_training_steps in config. Structure missing? Error: {e}"
-            )
+            print(f"Warning: Could not set total_training_steps in config. Structure missing? Error: {e}")
 
     def _dump_generations(
         self,
@@ -292,10 +280,7 @@ class RayDiffusionPPOTrainer:
         """
         with marked_timer("dump_rollout_generations", timing_raw, color="green"):
             scores = batch.batch["instance_level_scores"].cpu().tolist()
-            sample_gts = [
-                item.non_tensor_batch.get("reward_model", {}).get("ground_truth", None)
-                for item in batch
-            ]
+            sample_gts = [item.non_tensor_batch.get("reward_model", {}).get("ground_truth", None) for item in batch]
 
             self._dump_generations(
                 inputs=batch.non_tensor_batch["prompt"].tolist(),
@@ -326,18 +311,14 @@ class RayDiffusionPPOTrainer:
         samples = samples[:generations_to_log]
 
         # Log to each configured logger
-        self.validation_generations_logger.log(
-            self.config.trainer.logger, samples, self.global_steps
-        )
+        self.validation_generations_logger.log(self.config.trainer.logger, samples, self.global_steps)
 
     def _get_gen_batch(self, batch: DataProto) -> DataProto:
         reward_model_keys = set({"data_source", "reward_model", "extra_info", "uid"})
 
         # pop those keys for generation
         batch_keys_to_pop: list[str] = []
-        non_tensor_batch_keys_to_pop = (
-            set(batch.non_tensor_batch.keys()) - reward_model_keys
-        )
+        non_tensor_batch_keys_to_pop = set(batch.non_tensor_batch.keys()) - reward_model_keys
         gen_batch = batch.pop(
             batch_keys=batch_keys_to_pop,
             non_tensor_batch_keys=list(non_tensor_batch_keys_to_pop),
@@ -368,10 +349,7 @@ class RayDiffusionPPOTrainer:
 
             if "uid" not in test_batch.non_tensor_batch:
                 test_batch.non_tensor_batch["uid"] = np.array(
-                    [
-                        str(uuid.uuid4())
-                        for _ in range(len(test_batch.non_tensor_batch["prompt"]))
-                    ],
+                    [str(uuid.uuid4()) for _ in range(len(test_batch.non_tensor_batch["prompt"]))],
                     dtype=object,
                 )
 
@@ -382,10 +360,7 @@ class RayDiffusionPPOTrainer:
             )
 
             # we only do validation on rule-based rm
-            if (
-                self.config.reward_model.enable
-                and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model"
-            ):
+            if self.config.reward_model.enable and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model":
                 return {}
 
             # Store original inputs
@@ -393,8 +368,7 @@ class RayDiffusionPPOTrainer:
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
 
             ground_truths = [
-                item.non_tensor_batch.get("reward_model", {}).get("ground_truth", None)
-                for item in test_batch
+                item.non_tensor_batch.get("reward_model", {}).get("ground_truth", None) for item in test_batch
             ]
             sample_gts.extend(ground_truths)
 
@@ -412,16 +386,10 @@ class RayDiffusionPPOTrainer:
             if not self.async_rollout_mode:
                 if self.config.actor_rollout_ref.rollout.with_reward:
                     test_gen_batch.meta_info["reward_fn"] = self.val_reward_fn
-                    print(
-                        f"updated test_gen_batch meta info: {test_gen_batch.meta_info}"
-                    )
-                test_output_gen_batch = self.actor_rollout_wg.generate_sequences(
-                    test_gen_batch
-                )
+                    print(f"updated test_gen_batch meta info: {test_gen_batch.meta_info}")
+                test_output_gen_batch = self.actor_rollout_wg.generate_sequences(test_gen_batch)
             else:
-                test_output_gen_batch = self.async_rollout_manager.generate_sequences(
-                    test_gen_batch
-                )
+                test_output_gen_batch = self.async_rollout_manager.generate_sequences(test_gen_batch)
 
             print("validation generation end")
 
@@ -452,15 +420,11 @@ class RayDiffusionPPOTrainer:
                         reward_extra_infos_dict[key].extend(lst)
 
             data_source_lst.append(
-                test_batch.non_tensor_batch.get(
-                    "data_source", ["unknown"] * reward_tensor.shape[0]
-                )
+                test_batch.non_tensor_batch.get("data_source", ["unknown"] * reward_tensor.shape[0])
             )
 
         sample_outputs = torch.cat(sample_outputs, dim=0)
-        self._maybe_log_val_generations(
-            inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores
-        )
+        self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
         # dump generations
         val_data_dir = self.config.trainer.get("validation_data_dir", None)
@@ -475,32 +439,20 @@ class RayDiffusionPPOTrainer:
             )
 
         for key_info, lst in reward_extra_infos_dict.items():
-            assert len(lst) == 0 or len(lst) == len(sample_scores), (
-                f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
-            )
+            assert len(lst) == 0 or len(lst) == len(sample_scores), f"{key_info}: {len(lst)=}, {len(sample_scores)=}"
 
         data_sources = np.concatenate(data_source_lst, axis=0)
 
-        data_src2var2metric2val = process_validation_metrics(
-            data_sources, sample_uids, reward_extra_infos_dict
-        )
+        data_src2var2metric2val = process_validation_metrics(data_sources, sample_uids, reward_extra_infos_dict)
         metric_dict = {}
         for data_source, var2metric2val in data_src2var2metric2val.items():
             core_var = "acc" if "acc" in var2metric2val else "reward"
             for var_name, metric2val in var2metric2val.items():
-                n_max = max(
-                    [
-                        int(name.split("@")[-1].split("/")[0])
-                        for name in metric2val.keys()
-                    ]
-                )
+                n_max = max([int(name.split("@")[-1].split("/")[0]) for name in metric2val.keys()])
                 for metric_name, metric_val in metric2val.items():
                     if (
                         (var_name == core_var)
-                        and any(
-                            metric_name.startswith(pfx)
-                            for pfx in ["mean", "maj", "best"]
-                        )
+                        and any(metric_name.startswith(pfx) for pfx in ["mean", "maj", "best"])
                         and (f"@{n_max}" in metric_name)
                     ):
                         metric_sec = "val-core"
@@ -520,16 +472,10 @@ class RayDiffusionPPOTrainer:
         """
         self.resource_pool_manager.create_resource_pool()
 
-        self.resource_pool_to_cls = {
-            pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()
-        }
+        self.resource_pool_to_cls = {pool: {} for pool in self.resource_pool_manager.resource_pool_dict.values()}
 
         # create actor and rollout
-        actor_role = (
-            Role.ActorRolloutRef
-            if Role.ActorRolloutRef in self.role_worker_mapping
-            else Role.ActorRollout
-        )
+        actor_role = Role.ActorRolloutRef if Role.ActorRolloutRef in self.role_worker_mapping else Role.ActorRollout
         if self.hybrid_engine:
             resource_pool = self.resource_pool_manager.get_resource_pool(actor_role)
             actor_rollout_cls = RayClassWithInitArgs(
@@ -537,9 +483,7 @@ class RayDiffusionPPOTrainer:
                 config=self.config.actor_rollout_ref,
                 role=str(actor_role),
             )
-            self.resource_pool_to_cls[resource_pool][str(actor_role)] = (
-                actor_rollout_cls
-            )
+            self.resource_pool_to_cls[resource_pool][str(actor_role)] = actor_rollout_cls
         else:
             raise NotImplementedError
 
@@ -551,16 +495,12 @@ class RayDiffusionPPOTrainer:
                 config=self.config.actor_rollout_ref,
                 role=str(Role.RefPolicy),
             )
-            self.resource_pool_to_cls[resource_pool][str(Role.RefPolicy)] = (
-                ref_policy_cls
-            )
+            self.resource_pool_to_cls[resource_pool][str(Role.RefPolicy)] = ref_policy_cls
 
         # create a reward model if reward_fn is None
         if self.use_rm:
             # we create a RM here
-            resource_pool = self.resource_pool_manager.get_resource_pool(
-                Role.RewardModel
-            )
+            resource_pool = self.resource_pool_manager.get_resource_pool(Role.RewardModel)
             rm_cls = RayClassWithInitArgs(
                 self.role_worker_mapping[Role.RewardModel],
                 config=self.config.reward_model,
@@ -574,17 +514,10 @@ class RayDiffusionPPOTrainer:
         # See https://github.com/volcengine/verl/blob/master/examples/ray/tutorial.ipynb for more information.
         all_wg = {}
         wg_kwargs = {}  # Setting up kwargs for RayWorkerGroup
-        if (
-            OmegaConf.select(self.config.trainer, "ray_wait_register_center_timeout")
-            is not None
-        ):
-            wg_kwargs["ray_wait_register_center_timeout"] = (
-                self.config.trainer.ray_wait_register_center_timeout
-            )
+        if OmegaConf.select(self.config.trainer, "ray_wait_register_center_timeout") is not None:
+            wg_kwargs["ray_wait_register_center_timeout"] = self.config.trainer.ray_wait_register_center_timeout
         if OmegaConf.select(self.config.global_profiler, "steps") is not None:
-            wg_kwargs["profile_steps"] = OmegaConf.select(
-                self.config.global_profiler, "steps"
-            )
+            wg_kwargs["profile_steps"] = OmegaConf.select(self.config.global_profiler, "steps")
             # Only require nsight worker options when tool is nsys
             if OmegaConf.select(self.config.global_profiler, "tool") == "nsys":
                 assert (
@@ -593,9 +526,7 @@ class RayDiffusionPPOTrainer:
                         "worker_nsight_options",
                     )
                     is not None
-                ), (
-                    "worker_nsight_options must be set when using nsys with profile_steps"
-                )
+                ), "worker_nsight_options must be set when using nsys with profile_steps"
                 wg_kwargs["worker_nsight_options"] = OmegaConf.to_container(
                     OmegaConf.select(
                         self.config.global_profiler.global_tool_config.nsys,
@@ -639,13 +570,8 @@ class RayDiffusionPPOTrainer:
             from verl.experimental.agent_loop import AgentLoopManager
 
             self.async_rollout_mode = True
-            if (
-                self.config.reward_model.enable
-                and self.config.reward_model.enable_resource_pool
-            ):
-                rm_resource_pool = self.resource_pool_manager.get_resource_pool(
-                    Role.RewardModel
-                )
+            if self.config.reward_model.enable and self.config.reward_model.enable_resource_pool:
+                rm_resource_pool = self.resource_pool_manager.get_resource_pool(Role.RewardModel)
             else:
                 rm_resource_pool = None
 
@@ -666,18 +592,11 @@ class RayDiffusionPPOTrainer:
         print(f"local_global_step_folder: {local_global_step_folder}")
         actor_local_path = os.path.join(local_global_step_folder, "actor")
 
-        remove_previous_ckpt_in_save = self.config.trainer.get(
-            "remove_previous_ckpt_in_save", False
-        )
+        remove_previous_ckpt_in_save = self.config.trainer.get("remove_previous_ckpt_in_save", False)
         if remove_previous_ckpt_in_save:
-            print(
-                "Warning: remove_previous_ckpt_in_save is deprecated,"
-                + " set max_actor_ckpt_to_keep=1 instead"
-            )
+            print("Warning: remove_previous_ckpt_in_save is deprecated," + " set max_actor_ckpt_to_keep=1 instead")
         max_actor_ckpt_to_keep = (
-            self.config.trainer.get("max_actor_ckpt_to_keep", None)
-            if not remove_previous_ckpt_in_save
-            else 1
+            self.config.trainer.get("max_actor_ckpt_to_keep", None) if not remove_previous_ckpt_in_save else 1
         )
 
         self.actor_rollout_wg.save_checkpoint(
@@ -709,15 +628,11 @@ class RayDiffusionPPOTrainer:
         if self.config.trainer.default_hdfs_dir is not None:
             raise NotImplementedError("load from hdfs is not implemented yet")
         else:
-            checkpoint_folder = (
-                self.config.trainer.default_local_dir
-            )  # TODO: check path
+            checkpoint_folder = self.config.trainer.default_local_dir  # TODO: check path
             if not os.path.isabs(checkpoint_folder):
                 working_dir = os.getcwd()
                 checkpoint_folder = os.path.join(working_dir, checkpoint_folder)
-            global_step_folder = find_latest_ckpt_path(
-                checkpoint_folder
-            )  # None if no latest
+            global_step_folder = find_latest_ckpt_path(checkpoint_folder)  # None if no latest
 
         # find global_step_folder
         if self.config.trainer.resume_mode == "auto":
@@ -727,9 +642,7 @@ class RayDiffusionPPOTrainer:
                 return 0
         else:
             if self.config.trainer.resume_mode == "resume_path":
-                assert isinstance(self.config.trainer.resume_from_path, str), (
-                    "resume ckpt must be str type"
-                )
+                assert isinstance(self.config.trainer.resume_from_path, str), "resume ckpt must be str type"
                 assert "global_step_" in self.config.trainer.resume_from_path, (
                     "resume ckpt must specify the global_steps"
                 )
@@ -755,21 +668,15 @@ class RayDiffusionPPOTrainer:
         # TODO: from remote not implemented yet
         dataloader_local_path = os.path.join(global_step_folder, "data.pt")
         if os.path.exists(dataloader_local_path):
-            dataloader_state_dict = torch.load(
-                dataloader_local_path, weights_only=False
-            )
+            dataloader_state_dict = torch.load(dataloader_local_path, weights_only=False)
             self.train_dataloader.load_state_dict(dataloader_state_dict)
         else:
-            print(
-                f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch"
-            )
+            print(f"Warning: No dataloader state found at {dataloader_local_path}, will start from scratch")
 
     def _start_profiling(self, do_profile: bool) -> None:
         """Start profiling for all worker groups if profiling is enabled."""
         if do_profile:
-            self.actor_rollout_wg.start_profile(
-                role="e2e", profile_step=self.global_steps
-            )
+            self.actor_rollout_wg.start_profile(role="e2e", profile_step=self.global_steps)
             if self.use_reference_policy:
                 self.ref_policy_wg.start_profile(profile_step=self.global_steps)
             if self.use_rm:
@@ -807,9 +714,7 @@ class RayDiffusionPPOTrainer:
 
         # perform validation before training
         # currently, we only support validation using the reward_function.
-        if self.val_reward_fn is not None and self.config.trainer.get(
-            "val_before_train", True
-        ):
+        if self.val_reward_fn is not None and self.config.trainer.get("val_before_train", True):
             val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
@@ -856,10 +761,7 @@ class RayDiffusionPPOTrainer:
 
                 # add uid to batch
                 batch.non_tensor_batch["uid"] = np.array(
-                    [
-                        str(uuid.uuid4())
-                        for _ in range(len(batch.non_tensor_batch["prompt"]))
-                    ],
+                    [str(uuid.uuid4()) for _ in range(len(batch.non_tensor_batch["prompt"]))],
                     dtype=object,
                 )
 
@@ -883,11 +785,7 @@ class RayDiffusionPPOTrainer:
                                 gen_batch_output,
                             )
                         else:
-                            gen_batch_output = (
-                                self.async_rollout_manager.generate_sequences(
-                                    gen_batch_output
-                                )
-                            )
+                            gen_batch_output = self.async_rollout_manager.generate_sequences(gen_batch_output)
 
                         timing_raw.update(gen_batch_output.meta_info["timing"])
                         gen_batch_output.meta_info.pop("timing", None)
@@ -909,17 +807,10 @@ class RayDiffusionPPOTrainer:
                                     config=self.config,
                                 )
                             else:
-                                reward_tensor, reward_extra_infos_dict = compute_reward(
-                                    batch, self.reward_fn
-                                )
+                                reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
-                    rollout_corr_config = self.config.algorithm.get(
-                        "rollout_correction", None
-                    )
-                    bypass_recomputing_logprobs = (
-                        rollout_corr_config
-                        and rollout_corr_config.get("bypass_mode", False)
-                    )
+                    rollout_corr_config = self.config.algorithm.get("rollout_correction", None)
+                    bypass_recomputing_logprobs = rollout_corr_config and rollout_corr_config.get("bypass_mode", False)
                     if bypass_recomputing_logprobs:
                         batch.batch["old_log_probs"] = batch.batch["rollout_log_probs"]
                     else:  # Recompute old_log_probs
@@ -927,23 +818,15 @@ class RayDiffusionPPOTrainer:
                             old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                             batch = batch.union(old_log_prob)
 
-                    assert "old_log_probs" in batch.batch, (
-                        f'"old_log_prob" not in {batch.batch.keys()=}'
-                    )
+                    assert "old_log_probs" in batch.batch, f'"old_log_prob" not in {batch.batch.keys()=}'
 
                     if self.use_reference_policy:
                         # compute reference log_prob
-                        with marked_timer(
-                            str(Role.RefPolicy), timing_raw, color="olive"
-                        ):
+                        with marked_timer(str(Role.RefPolicy), timing_raw, color="olive"):
                             if not self.ref_in_actor:
-                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(
-                                    batch
-                                )
+                                ref_log_prob = self.ref_policy_wg.compute_ref_log_prob(batch)
                             else:
-                                ref_log_prob = (
-                                    self.actor_rollout_wg.compute_ref_log_prob(batch)
-                                )
+                                ref_log_prob = self.actor_rollout_wg.compute_ref_log_prob(batch)
                             batch = batch.union(ref_log_prob)
 
                     with marked_timer("adv", timing_raw, color="brown"):
@@ -952,22 +835,15 @@ class RayDiffusionPPOTrainer:
                             reward_extra_infos_dict: dict[str, list]
 
                             if self.config.reward_model.launch_reward_fn_async:
-                                reward_tensor, reward_extra_infos_dict = ray.get(
-                                    future_reward
-                                )
+                                reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
                             batch.batch["instance_level_scores"] = reward_tensor
 
                             if reward_extra_infos_dict:
                                 batch.non_tensor_batch.update(
-                                    {
-                                        k: np.array(v)
-                                        for k, v in reward_extra_infos_dict.items()
-                                    }
+                                    {k: np.array(v) for k, v in reward_extra_infos_dict.items()}
                                 )
 
-                            batch.batch["instance_level_rewards"] = batch.batch[
-                                "instance_level_scores"
-                            ]
+                            batch.batch["instance_level_rewards"] = batch.batch["instance_level_scores"]
 
                         # compute advantages, executed on the driver process
                         norm_adv_by_std_in_grpo = self.config.algorithm.get(
@@ -985,26 +861,19 @@ class RayDiffusionPPOTrainer:
                     # update actor
                     with marked_timer("update_actor", timing_raw, color="red"):
                         actor_output = self.actor_rollout_wg.update_actor(batch)
-                    actor_output_metrics = reduce_metrics(
-                        actor_output.meta_info["metrics"]
-                    )
+                    actor_output_metrics = reduce_metrics(actor_output.meta_info["metrics"])
                     metrics.update(actor_output_metrics)
 
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)
                     if rollout_data_dir:
-                        self._log_rollout_data(
-                            batch, reward_extra_infos_dict, timing_raw, rollout_data_dir
-                        )
+                        self._log_rollout_data(batch, reward_extra_infos_dict, timing_raw, rollout_data_dir)
 
                 # validate
                 if (
                     self.val_reward_fn is not None
                     and self.config.trainer.test_freq > 0
-                    and (
-                        is_last_step
-                        or self.global_steps % self.config.trainer.test_freq == 0
-                    )
+                    and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0)
                 ):
                     with marked_timer("testing", timing_raw, color="green"):
                         val_metrics: dict = self._validate()
@@ -1025,14 +894,10 @@ class RayDiffusionPPOTrainer:
                 # 3. The current step number is a multiple of the save frequency.
                 # 4. The ESI(Elastic Server Instance)/training plan is close to expiration.
                 if self.config.trainer.save_freq > 0 and (
-                    is_last_step
-                    or self.global_steps % self.config.trainer.save_freq == 0
-                    or esi_close_to_expiration
+                    is_last_step or self.global_steps % self.config.trainer.save_freq == 0 or esi_close_to_expiration
                 ):
                     if esi_close_to_expiration:
-                        print(
-                            "Force saving checkpoint: ESI instance expiration approaching."
-                        )
+                        print("Force saving checkpoint: ESI instance expiration approaching.")
                     with marked_timer("save_checkpoint", timing_raw, color="green"):
                         self._save_checkpoint()
 
@@ -1062,16 +927,10 @@ class RayDiffusionPPOTrainer:
                 )
                 # collect metrics
                 metrics.update(compute_diffusion_data_metrics(batch=batch))
-                metrics.update(
-                    compute_diffusion_timing_metrics(batch=batch, timing_raw=timing_raw)
-                )
+                metrics.update(compute_diffusion_timing_metrics(batch=batch, timing_raw=timing_raw))
                 # TODO: implement actual tflpo and theoretical tflpo
                 n_gpus = self.resource_pool_manager.get_n_gpus()
-                metrics.update(
-                    compute_diffusion_throughout_metrics(
-                        batch=batch, timing_raw=timing_raw, n_gpus=n_gpus
-                    )
-                )
+                metrics.update(compute_diffusion_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
@@ -1081,8 +940,7 @@ class RayDiffusionPPOTrainer:
 
                 if (
                     hasattr(self.config.actor_rollout_ref.actor, "profiler")
-                    and self.config.actor_rollout_ref.actor.profiler.tool
-                    == "torch_memory"
+                    and self.config.actor_rollout_ref.actor.profiler.tool == "torch_memory"
                 ):
                     self.actor_rollout_wg.dump_memory_snapshot(
                         tag=f"post_update_step{self.global_steps}",
