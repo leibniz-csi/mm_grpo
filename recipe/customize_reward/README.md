@@ -81,5 +81,3 @@ If you implement a rule-based reward, you only need to compute reward values in 
 `gerl/utils/reward_score/vllm.py`'s `QwenVLOCRVLLMScorer` is an example for calling "Qwen2.5-VL" model via [vllm](https://github.com/vllm-project/vllm) as the OCR reward scorer.
 1. In `__init__()` initialize vllm client setup.
 2. In `__call__()`, prepare input prompts and call the model to get responses via vllm serving; then we compute reward values.
-
-/
