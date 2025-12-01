@@ -1,5 +1,0 @@
-datasets
-diffusers
-transformers
-peft
-flashinfer-python
