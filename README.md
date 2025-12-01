@@ -6,7 +6,7 @@ An easy-to-use and fast library to support RL training for multi-modal generativ
 
 - Easy-to-integrate diverse RL training algorithms for MM generative models, including `FlowGRPO` and `FlowGRPO-Fast`.
 - Scalable and efficient parallel training with asynchronous streaming workflow
-- Compatible with diffusion models from `Diffusers`.
+- Compatible with diffusion models from `diffusers`.
 
 ### Supported Algorithms
 - [x] [Flow-GRPO](https://arxiv.org/abs/2505.05470)
