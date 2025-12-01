@@ -28,7 +28,7 @@ from tensordict import TensorDict
 from torch.distributed.device_mesh import DeviceMesh
 from verl.utils.device import get_device_name
 from verl.utils.fs import copy_to_local
-from verl.utils.profiler import GPUMemoryLogger
+from verl.utils.profiler import GPUMemoryLogger, simple_timer
 from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.torch_dtypes import PrecisionType
 
@@ -189,7 +189,7 @@ class DiffusersSyncRollout(BaseRollout):
                 },
                 batch_size=len(output.images),
             )
-            # compute micro_batch reward
+            # launch async micro_batch reward computing
             if self.config.with_reward:
                 micro_batch.batch = TensorDict(
                     {
@@ -214,12 +214,15 @@ class DiffusersSyncRollout(BaseRollout):
         result.meta_info["cached_steps"] = result.batch["timesteps"].shape[1]
 
         if self.config.with_reward:
-            # concatenate reward result batches
-            for future in future_rewards:
-                reward_tensor, reward_extra_infos_dict = ray.get(future)
-                reward_tensors.append(reward_tensor)
-                for k, v in reward_extra_infos_dict.items():
-                    reward_extra_infos_dicts[k].extend(v)
+            timing_reward: dict[str, float] = {}
+            with simple_timer("reward", timing_reward):
+                # concatenate reward result batches
+                for future in future_rewards:
+                    reward_tensor, reward_extra_infos_dict = ray.get(future)
+                    reward_tensors.append(reward_tensor)
+                    for k, v in reward_extra_infos_dict.items():
+                        reward_extra_infos_dicts[k].extend(v)
+            result.meta_info["reward_time"] = timing_reward
 
             # we combine with rewards in result
             result.batch["instance_level_scores"] = torch.cat(reward_tensors)
