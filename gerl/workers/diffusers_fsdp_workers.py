@@ -829,6 +829,10 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             topk_reduce_ratio_min_max(timing_generate["generate_sequences"])
         )
         timing_generate = reduce_timing(timing_generate)
+        timing_reward = output.meta_info.pop("timing_reward", None)
+        if timing_reward is not None:
+            timing_reward = reduce_timing(timing_reward)
+            timing_generate.update(timing_reward)
         timing_generate.update(
             {
                 "generation_timing/max": timing_generate_max,
