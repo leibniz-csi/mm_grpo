@@ -222,7 +222,7 @@ class DiffusersSyncRollout(BaseRollout):
                     reward_tensors.append(reward_tensor)
                     for k, v in reward_extra_infos_dict.items():
                         reward_extra_infos_dicts[k].extend(v)
-            result.meta_info["reward_time"] = timing_reward
+            result.meta_info["timing_reward"] = timing_reward
 
             # we combine with rewards in result
             result.batch["instance_level_scores"] = torch.cat(reward_tensors)

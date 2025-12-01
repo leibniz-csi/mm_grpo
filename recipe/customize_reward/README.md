@@ -1,9 +1,9 @@
 # Customize Reward Function
 
 `gerl` supports multiple reward scorers in a diversity of rewards, including rule-based, model-based (CPU), and remote API-calling model-based rewards.
-Exemplar codes locate in `gerl/utils/reward_score`.
+Example code is located in `gerl/utils/reward_score`.
 
-Here below are step-wise instruction on customizing a new reward scorer and some examples.
+Here below are step-by-step instructions on customizing a new reward scorer and some examples.
 
 ## Customizing Reward Scorer in Steps
 
@@ -45,7 +45,7 @@ class CustomizedRewardScorer(Scorer):
 
 **Step 2: register your reward scorer.**
 
-Add new scorer name and mapped class name in `gerl\utils\reward_score\multi.py`
+Add new scorer name and mapped class name in `gerl/utils/reward_score/multi.py`
 ```python
 AVAILABLE_SCORERS = {
     ...
@@ -63,9 +63,9 @@ python3 -m gerl.trainer.main_flowgrpo \
     ...
 ```
 
-**Step4: tips and tesing.**
+**Step4: tips and testing.**
 
-You'd better have a unit test script for your scorer before apply your reward to run training, and add your testing in `tests/reward_score/run_reward_fns.sh`.
+You'd better have a unit test script for your scorer before applying your reward to run training, and add your testing in `tests/reward_score/run_reward_fns.sh`.
 
 For example, `test_paddle_ocr_scorer` in `gerl/utils/reward_score/ocr.py` and `test_qwen_vl_ocr_vllm_scorer` in `gerl/utils/reward_score/vllm.py`.
 
@@ -75,10 +75,11 @@ For example, `test_paddle_ocr_scorer` in `gerl/utils/reward_score/ocr.py` and `t
 1. In `__init__()` load model. Note that we must initialize and load model in `__init__()` once for speedup.
 2. In `__call__()`, model infers recognized texts; and then compute reward values.
 
-If you implement a rule-based reward, you only need to compute compute reward values in `__call__()`.
+If you implement a rule-based reward, you only need to compute reward values in `__call__()`.
 
-### API-serving Model-based Reward (e.g., vllm)
+### API-serving Model-based Reward (e.g., vLLM, SGLang)
 `gerl/utils/reward_score/vllm.py`'s `QwenVLOCRVLLMScorer` is an example for calling "Qwen2.5-VL" model via [vllm](https://github.com/vllm-project/vllm) as the OCR reward scorer.
 1. In `__init__()` initialize vllm client setup.
 2. In `__call__()`, prepare input prompts and call the model to get responses via vllm serving; then we compute reward values.
 
+/
