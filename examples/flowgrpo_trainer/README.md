@@ -17,7 +17,7 @@ Below are examples for post-training SD-3.5-M on an OCR task using OCR reward.
 
 Download the OCR dataset from [Flow-GRPO](https://github.com/yifan123/flow_grpo/tree/main/dataset/ocr) and place it in the `dataset` folder.
 <br>
-Before training, specify the paths in the configuration files under `data.train_files` and `data.val_files`.
+Before training, specify the paths in the configuration parameters `data.train_files` and `data.val_files`.
 
 2. Start Training
 
