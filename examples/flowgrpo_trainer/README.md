@@ -46,6 +46,6 @@ bash examples/flowgrpo_trainer/run_sd3_fast.sh
 ### Validation Reward Curve
 
 | Model   | Algorithm      | # Cards | Reward Curve |
-| ------- | ---------      | ------- | ------------ |
+| ------- | -----------    | ------- | ------------- |
 | SD3.5-M | Flow-GRPO      | 8       | <img width=512 src="https://github.com/user-attachments/assets/e559bb07-bca0-4672-b849-f665c5cbc0d1" /> |
 | SD3.5-M | Flow-GRPO-Fast | 8       | <img width=512 src="https://github.com/user-attachments/assets/24393445-81e2-43dd-9be9-ec24d85f58dc" /> |
