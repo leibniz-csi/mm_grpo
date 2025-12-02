@@ -191,14 +191,11 @@ class DiffusersSyncRollout(BaseRollout):
             )
             # launch async micro_batch reward computing
             if self.config.with_reward:
-                micro_batch.batch = TensorDict(
-                    {
-                        "responses": output.images,
-                    },
-                    batch_size=len(output.images),
-                )
                 future_reward = compute_reward_async.remote(
-                    data=micro_batch,
+                    data=DataProto(
+                        batch=result.select("responses"),
+                        non_tensor_batch=micro_batch.non_tensor_batch,
+                    ),
                     reward_fn=reward_fn,
                 )
                 future_rewards.append(future_reward)
