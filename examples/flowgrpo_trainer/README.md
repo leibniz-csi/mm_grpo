@@ -11,7 +11,7 @@
 
 ## Quick Start
 
-Below are examples for post-training SD-3.5-M on an OCR task using OCR reward.
+Below are examples for post-training SD-3.5-M on an OCR task using the OCR reward.
 
 1. Dataset
 
