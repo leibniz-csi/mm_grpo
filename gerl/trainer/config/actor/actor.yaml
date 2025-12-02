@@ -11,6 +11,12 @@ _target_: gerl.workers.config.DiffusionActorConfig
 # fsdp, fsdp2 or megatron. must be set.
 strategy: ???
 
+# Number of nodes for actor. (For standalone mode only.)
+nnodes: ${oc.select:trainer.nnodes,0}
+
+# Number of GPUs per node for actor. (For standalone mode only.)
+n_gpus_per_node: 0
+
 # Split each sample into sub-batches of this size for PPO
 ppo_mini_batch_size: 8
 

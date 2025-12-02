@@ -284,6 +284,8 @@ class DiffusersSyncRollout(BaseRollout):
 
 
 class DiffusersAsyncRollout(DiffusersSyncRollout):
-    def __init__(self, config, model_config, device_mesh):
-        super().__init__(config, model_config, device_mesh)
-        raise NotImplementedError("DiffusersAsyncRollout is not implemented yet.")
+    async def generate_sequences(self, prompts: DataProto) -> DataProto:
+        # TODO (Mike): implement async generate_sequences
+        # rewards: future
+        # others: non-future
+        raise NotImplementedError("Async rollout is not implemented yet.")

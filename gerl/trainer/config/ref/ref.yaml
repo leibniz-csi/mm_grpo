@@ -1,6 +1,12 @@
 # actor_rollout_ref.ref: FSDP config same as actor. For models larger than 7B, it’s recommended to turn on offload for ref by default
 strategy: ${actor_rollout_ref.actor.strategy}
 
+# Number of nodes for reference. (For standalone mode only.)
+nnodes: ${oc.select:trainer.nnodes,0}
+
+# Number of GPUs per node for reference. (For standalone mode only.)
+n_gpus_per_node: 0
+
 # profile the ref model in `compute_log_prob`
 profiler:
 

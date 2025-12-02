@@ -1032,5 +1032,21 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
 
 class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
-    def __init__(self, config: DictConfig, role: str, **kwargs):
-        raise NotImplementedError
+    @register(dispatch_mode=Dispatch.DIRECT_ROLLOUT_METHOD)
+    async def wake_up(self):
+        await self.rollout_mode()
+        return True
+
+    @register(dispatch_mode=Dispatch.DIRECT_ROLLOUT_METHOD)
+    async def sleep(self):
+        await self.trainer_mode()
+        return True
+
+    @register(
+        dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"),
+        blocking=False,
+    )
+    @DistProfiler.annotate(color="red", role="rollout_generate")
+    def generate_sequences(self, prompts: DataProto):
+        # TODO (Mike): implement generate_sequences
+        ...
