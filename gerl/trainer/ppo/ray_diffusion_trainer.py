@@ -417,7 +417,7 @@ class RayDiffusionPPOTrainer:
                     print(
                         f"updated test_gen_batch meta info: {test_gen_batch.meta_info}"
                     )
-                test_output_gen_batch = self.actor_rollout_wg.generate_sequences(
+                test_output_gen_batch = self.rollout_wg.generate_sequences(
                     test_gen_batch
                 )
             else:
@@ -527,11 +527,15 @@ class RayDiffusionPPOTrainer:
         }
 
         # create actor and rollout
-        actor_role = (
-            Role.ActorRolloutRef
-            if Role.ActorRolloutRef in self.role_worker_mapping
-            else Role.ActorRollout
-        )
+        if self.hybrid_engine:
+            actor_role = (
+                Role.ActorRolloutRef
+                if Role.ActorRolloutRef in self.role_worker_mapping
+                else Role.ActorRollout
+            )
+        else:
+            actor_role = Role.Actor
+
         if self.hybrid_engine:
             resource_pool = self.resource_pool_manager.get_resource_pool(actor_role)
             actor_rollout_cls = RayClassWithInitArgs(
@@ -543,7 +547,14 @@ class RayDiffusionPPOTrainer:
                 actor_rollout_cls
             )
         else:
-            raise NotImplementedError
+            for role in [Role.Actor, Role.Rollout]:
+                resource_pool = self.resource_pool_manager.get_resource_pool(role)
+                role_cls = RayClassWithInitArgs(
+                    cls=self.role_worker_mapping[role],
+                    config=self.config.actor_rollout_ref,
+                    role=str(role),
+                )
+                self.resource_pool_to_cls[resource_pool][str(role)] = role_cls
 
         # create reference policy if needed
         if self.use_reference_policy and Role.RefPolicy in self.role_worker_mapping:
@@ -634,6 +645,11 @@ class RayDiffusionPPOTrainer:
         # we should create rollout at the end so that vllm can have a better estimation of kv cache memory
         self.actor_rollout_wg = all_wg[str(actor_role)]
         self.actor_rollout_wg.init_model()
+        if not self.hybrid_engine:
+            self.rollout_wg = all_wg[str(Role.Rollout)]
+            self.rollout_wg.init_model()
+        else:
+            self.rollout_wg = self.actor_rollout_wg
 
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
@@ -864,7 +880,7 @@ class RayDiffusionPPOTrainer:
                         if not self.async_rollout_mode:
                             if self.config.actor_rollout_ref.rollout.with_reward:
                                 gen_batch_output.meta_info["reward_fn"] = self.reward_fn
-                            gen_batch_output = self.actor_rollout_wg.generate_sequences(
+                            gen_batch_output = self.rollout_wg.generate_sequences(
                                 gen_batch_output,
                             )
                         else:

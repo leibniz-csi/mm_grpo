@@ -158,7 +158,7 @@ class TaskRunner:
             self.mapping[Role.ActorRollout] = "global_pool"
         else:
             self.role_worker_mapping[Role.Actor] = ray.remote(actor_rollout_cls)
-            self.mapping[Role.Actor] = "trainer_pool"
+            self.mapping[Role.Actor] = "actor_pool"
 
             self.role_worker_mapping[Role.Rollout] = ray.remote(actor_rollout_cls)
             self.mapping[Role.Rollout] = "rollout_pool"
@@ -196,12 +196,15 @@ class TaskRunner:
     def init_seperated_resource_pool_mgr(self, config):
         """Initialize resource pool manager for seperated actor and rollout."""
         resource_pool_spec = {
-            "trainer_pool": [config.actor_rollout_ref.actor.n_gpus_per_node]
+            "actor_pool": [config.actor_rollout_ref.actor.n_gpus_per_node]
             * config.actor_rollout_ref.actor.nnodes,
             "rollout_pool": [config.actor_rollout_ref.rollout.n_gpus_per_node]
             * config.actor_rollout_ref.rollout.nnodes,
         }
-        if config.actor_rollout_ref.actor.use_kl_loss:
+        if (
+            config.actor_rollout_ref.actor.use_kl_loss
+            and config.actor_rollout_ref.model.lora_rank < 1
+        ):
             resource_pool_spec["ref_pool"] = [
                 config.actor_rollout_ref.ref.n_gpus_per_node
             ] * config.actor_rollout_ref.ref.nnodes
@@ -253,12 +256,23 @@ class TaskRunner:
         """Add reference policy worker if KL loss is used."""
         from verl.trainer.ppo.ray_trainer import Role
 
+        # Ref policy has been fused into ActorRolloutRefWorker in new model engine,
+        # we don't need to add a separate ref policy worker group.
+        use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
+        if use_legacy_worker_impl == "disable":
+            raise NotImplementedError(
+                "Currently, only legacy worker impl is supported."
+            )
+
         if config.actor_rollout_ref.actor.use_kl_loss:
             self.role_worker_mapping[Role.RefPolicy] = ray.remote(ref_policy_cls)
             if config.actor_rollout_ref.hybrid_engine:
                 self.mapping[Role.RefPolicy] = "global_pool"
             else:
-                self.mapping[Role.RefPolicy] = "ref_pool"
+                if config.actor_rollout_ref.model.lora_rank > 0:
+                    self.mapping[Role.RefPolicy] = "actor_pool"
+                else:
+                    self.mapping[Role.RefPolicy] = "ref_pool"
 
     def run(self, config):
         """Execute the main PPO training workflow.
