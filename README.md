@@ -1,12 +1,12 @@
 # MM-GRPO
-A fast and easy-to-use library to support RL training for multi-modal generative models, built on top of `verl`, `vLLM-Omni`, and `Diffusers`.
+A fast and easy-to-use library to support RL training for multi-modal generative models, built on top of `verl`, `vLLM-Omni`, and `diffusers`.
 
 
 ## Key Features
 
 - Easy integration of diverse RL training algorithms for multi-modal generative models, including `FlowGRPO` and `FlowGRPO-Fast`.
 - Scalable and efficient parallel training with an asynchronous streaming workflow.
-- Compatibility with diffusion models from `Diffusers`.
+- Compatibility with diffusion models from `diffusers`.
 
 ### Supported Algorithms
 - [x] [Flow-GRPO](https://arxiv.org/abs/2505.05470)
@@ -82,5 +82,5 @@ bash examples/flowgrpo_trainer/run_sd3_fast.sh
 We appreciate the contributions of the following works:
 - [verl](https://github.com/volcengine/verl)
 - [vLLM-Omni](https://github.com/vllm-project/vllm-omni)
-- [Diffusers](https://github.com/huggingface/diffusers)
+- [diffusers](https://github.com/huggingface/diffusers)
 - [Flow-GRPO](https://github.com/yifan123/flow_grpo)
