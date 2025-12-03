@@ -49,6 +49,7 @@ from verl.utils.rollout_skip import RolloutSkip
 from ...protocol import DataProto
 from ...utils.tracking import ValidationGenerationsLogger
 from ..config.algorithm import AlgoConfig
+from .async_utils import update_weights
 from .core_algos import (
     AdvantageEstimator,
     compute_flow_grpo_outcome_advantage,
@@ -417,6 +418,7 @@ class RayDiffusionPPOTrainer:
                     print(
                         f"updated test_gen_batch meta info: {test_gen_batch.meta_info}"
                     )
+                update_weights(self.actor_rollout_wg, self.rollout_wg)
                 test_output_gen_batch = self.rollout_wg.generate_sequences(
                     test_gen_batch
                 )
@@ -880,6 +882,7 @@ class RayDiffusionPPOTrainer:
                         if not self.async_rollout_mode:
                             if self.config.actor_rollout_ref.rollout.with_reward:
                                 gen_batch_output.meta_info["reward_fn"] = self.reward_fn
+                            update_weights(self.actor_rollout_wg, self.rollout_wg)
                             gen_batch_output = self.rollout_wg.generate_sequences(
                                 gen_batch_output,
                             )

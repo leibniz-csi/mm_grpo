@@ -551,23 +551,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             f"After building {self.config.rollout.name} rollout", logger=logger
         )
 
-        # Full params
-        if (
-            torch.distributed.get_world_size() == 1
-            and fsdp_version(self.actor_module_fsdp) == 1
-        ):
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.FULL_STATE_DICT,
-                state_dict_config=FullStateDictConfig(),
-            )
-        elif fsdp_version(self.actor_module_fsdp) == 1:
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.SHARDED_STATE_DICT,
-                state_dict_config=ShardedStateDictConfig(),
-            )
-
         # used for LoRA
         self.base_sync_done = True
         self.layered_summon = self.config.rollout.get("layered_summon", False)
@@ -580,13 +563,9 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             loop = get_event_loop()
             loop.run_until_complete(self.trainer_mode())
 
-    async def rollout_mode(self):
-        """Context switch hybridengine to rollout mode."""
-        log_gpu_memory_usage("Before load_fsdp_model_to_gpu", logger=logger)
-        if self._is_offload_param:
-            load_fsdp_model_to_gpu(self.actor_module_fsdp)
-        log_gpu_memory_usage("After load_fsdp_model_to_gpu", logger=logger)
-
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL)  # TODO (Mike): check dispatch mode
+    def get_params(self):
+        base_sync_done = getattr(self, "base_sync_done", True)
         peft_config = None
         peft_model = getattr(
             self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp
@@ -596,7 +575,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             params = collect_lora_params(
                 module=self.actor_module_fsdp,
                 layered_summon=self.config.rollout.get("layered_summon", False),
-                base_sync_done=self.base_sync_done,
+                base_sync_done=base_sync_done,
             )
         else:
             params = self.actor_module_fsdp.state_dict()
@@ -606,7 +585,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
         log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
 
-        if peft_config is not None and self.base_sync_done:
+        if peft_config is not None and base_sync_done:
             per_tensor_param = (
                 params.items() if isinstance(params, dict) else params
             )  # Fixed: handle dict case
@@ -621,17 +600,32 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                 )
                 for name, param in params.items()
             )
+        return per_tensor_param, peft_config
 
-        if self.config.rollout.free_cache_engine:
-            await self.rollout.resume()
-        log_gpu_memory_usage("After resume weights", logger=logger)
+    @register(
+        dispatch_mode=Dispatch.ALL_TO_ALL
+    )  # TODO (Mike): 1. check dispatch mode, 2. change to blocking=False
+    async def update_weights(self, per_tensor_param, peft_config):
         await self.rollout.update_weights(
             per_tensor_param,
             peft_config=peft_config,
             base_sync_done=self.base_sync_done,
         )
+
+    async def rollout_mode(self):
+        """Context switch hybridengine to rollout mode."""
+        log_gpu_memory_usage("Before load_fsdp_model_to_gpu", logger=logger)
+        if self._is_offload_param:
+            load_fsdp_model_to_gpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After load_fsdp_model_to_gpu", logger=logger)
+
+        per_tensor_param, peft_config = self.get_params()
+
+        if self.config.rollout.free_cache_engine:
+            await self.rollout.resume()
+        log_gpu_memory_usage("After resume weights", logger=logger)
+        await self.update_weights(per_tensor_param, peft_config)
         log_gpu_memory_usage("After update_weights", logger=logger)
-        del params, per_tensor_param
 
         self.base_sync_done = True
         # important: need to manually set the random states of each tp to be identical.
@@ -665,14 +659,9 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         use_shm = self.config.model.get("use_shm", False)
         use_fused_kernels = self.config.model.get("use_fused_kernels", False)
 
-        if self._is_actor or self._is_rollout:
-            # we need the model for actor and rollout
-            if self._is_actor:
-                optim_config = self.config.actor.optim
-                fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
-            else:
-                optim_config = None
-                fsdp_config = FSDPEngineConfig()
+        if self._is_actor:
+            optim_config = self.config.actor.optim
+            fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
 
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
             (
