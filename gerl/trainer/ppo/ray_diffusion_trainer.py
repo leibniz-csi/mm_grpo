@@ -656,7 +656,8 @@ class RayDiffusionPPOTrainer:
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
-            raise NotImplementedError("async rollout is not implemented yet")
+            # TODO (Mike): do we need implement scheduler?
+            ...
 
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe

@@ -280,9 +280,4 @@ class DiffusersSyncRollout(BaseRollout):
         set_peft_model_state_dict(self.pipeline.transformer, dict(weights))
 
 
-class DiffusersAsyncRollout(DiffusersSyncRollout):
-    async def generate_sequences(self, prompts: DataProto) -> DataProto:
-        # TODO (Mike): implement async generate_sequences
-        # rewards: future
-        # others: non-future
-        raise NotImplementedError("Async rollout is not implemented yet.")
+class DiffusersAsyncRollout(DiffusersSyncRollout): ...

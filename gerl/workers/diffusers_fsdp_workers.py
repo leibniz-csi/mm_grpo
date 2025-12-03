@@ -563,9 +563,13 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             loop = get_event_loop()
             loop.run_until_complete(self.trainer_mode())
 
-    @register(dispatch_mode=Dispatch.ALL_TO_ALL)  # TODO (Mike): check dispatch mode
-    def get_params(self):
-        base_sync_done = getattr(self, "base_sync_done", True)
+    async def rollout_mode(self):
+        """Context switch hybridengine to rollout mode."""
+        log_gpu_memory_usage("Before load_fsdp_model_to_gpu", logger=logger)
+        if self._is_offload_param:
+            load_fsdp_model_to_gpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After load_fsdp_model_to_gpu", logger=logger)
+
         peft_config = None
         peft_model = getattr(
             self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp
@@ -575,7 +579,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             params = collect_lora_params(
                 module=self.actor_module_fsdp,
                 layered_summon=self.config.rollout.get("layered_summon", False),
-                base_sync_done=base_sync_done,
+                base_sync_done=self.base_sync_done,
             )
         else:
             params = self.actor_module_fsdp.state_dict()
@@ -585,7 +589,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             offload_fsdp_model_to_cpu(self.actor_module_fsdp)
         log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
 
-        if peft_config is not None and base_sync_done:
+        if peft_config is not None and self.base_sync_done:
             per_tensor_param = (
                 params.items() if isinstance(params, dict) else params
             )  # Fixed: handle dict case
@@ -600,32 +604,17 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                 )
                 for name, param in params.items()
             )
-        return per_tensor_param, peft_config
 
-    @register(
-        dispatch_mode=Dispatch.ALL_TO_ALL
-    )  # TODO (Mike): 1. check dispatch mode, 2. change to blocking=False
-    async def update_weights(self, per_tensor_param, peft_config):
+        if self.config.rollout.free_cache_engine:
+            await self.rollout.resume()
+        log_gpu_memory_usage("After resume weights", logger=logger)
         await self.rollout.update_weights(
             per_tensor_param,
             peft_config=peft_config,
             base_sync_done=self.base_sync_done,
         )
-
-    async def rollout_mode(self):
-        """Context switch hybridengine to rollout mode."""
-        log_gpu_memory_usage("Before load_fsdp_model_to_gpu", logger=logger)
-        if self._is_offload_param:
-            load_fsdp_model_to_gpu(self.actor_module_fsdp)
-        log_gpu_memory_usage("After load_fsdp_model_to_gpu", logger=logger)
-
-        per_tensor_param, peft_config = self.get_params()
-
-        if self.config.rollout.free_cache_engine:
-            await self.rollout.resume()
-        log_gpu_memory_usage("After resume weights", logger=logger)
-        await self.update_weights(per_tensor_param, peft_config)
         log_gpu_memory_usage("After update_weights", logger=logger)
+        del params, per_tensor_param
 
         self.base_sync_done = True
         # important: need to manually set the random states of each tp to be identical.
@@ -1021,21 +1010,51 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
 
 class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
-    @register(dispatch_mode=Dispatch.DIRECT_ROLLOUT_METHOD)
-    async def wake_up(self):
-        await self.rollout_mode()
-        return True
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL)  # TODO (Mike): check dispatch mode
+    def get_params(self):
+        base_sync_done = getattr(self, "base_sync_done", True)
+        peft_config = None
+        peft_model = getattr(
+            self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp
+        )
+        if hasattr(peft_model, "peft_config"):  # LoRA
+            peft_config = peft_model.peft_config.get("default", None)
+            params = collect_lora_params(
+                module=self.actor_module_fsdp,
+                layered_summon=self.config.rollout.get("layered_summon", False),
+                base_sync_done=base_sync_done,
+            )
+        else:
+            params = self.actor_module_fsdp.state_dict()
 
-    @register(dispatch_mode=Dispatch.DIRECT_ROLLOUT_METHOD)
-    async def sleep(self):
-        await self.trainer_mode()
-        return True
+        log_gpu_memory_usage("Before offload_fsdp_model_to_cpu", logger=logger)
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
+
+        if peft_config is not None and base_sync_done:
+            per_tensor_param = (
+                params.items() if isinstance(params, dict) else params
+            )  # Fixed: handle dict case
+        else:
+            device = get_device_id()  # used when fsdp2 set cpu_offload_policy
+            per_tensor_param = (
+                (
+                    name,
+                    param.to(device, non_blocking=True).full_tensor()
+                    if isinstance(param, DTensor)
+                    else param,
+                )
+                for name, param in params.items()
+            )
+        return per_tensor_param, peft_config
 
     @register(
-        dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"),
-        blocking=False,
-    )
-    @DistProfiler.annotate(color="red", role="rollout_generate")
-    def generate_sequences(self, prompts: DataProto):
-        # TODO (Mike): implement generate_sequences
-        ...
+        dispatch_mode=Dispatch.ALL_TO_ALL
+    )  # TODO (Mike): 1. check dispatch mode, 2. change to blocking=False
+    async def update_weights(self, per_tensor_param, peft_config):
+        await self.rollout.update_weights(
+            per_tensor_param,
+            peft_config=peft_config,
+            base_sync_done=self.base_sync_done,
+        )
