@@ -31,15 +31,11 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from safetensors.torch import save_file
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.api import (
-    FullStateDictConfig,
-    ShardedStateDictConfig,
-    StateDictType,
-)
 from torch.distributed.tensor import DTensor
 from verl.single_controller.base import Worker
 from verl.single_controller.base.decorator import (
     Dispatch,
+    Execute,
     make_nd_compute_dataproto_dispatch_fn,
     register,
 )
@@ -1010,7 +1006,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
 
 class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
-    @register(dispatch_mode=Dispatch.ALL_TO_ALL)  # TODO (Mike): check dispatch mode
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL, execute_mode=Execute.RANK_ZERO)
     def get_params(self):
         base_sync_done = getattr(self, "base_sync_done", True)
         peft_config = None
@@ -1049,9 +1045,7 @@ class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
             )
         return per_tensor_param, peft_config
 
-    @register(
-        dispatch_mode=Dispatch.ALL_TO_ALL
-    )  # TODO (Mike): 1. check dispatch mode, 2. change to blocking=False
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL, execute_mode=Execute.RANK_ZERO)
     async def update_weights(self, per_tensor_param, peft_config):
         await self.rollout.update_weights(
             per_tensor_param,
