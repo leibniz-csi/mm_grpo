@@ -49,6 +49,7 @@ from verl.utils.rollout_skip import RolloutSkip
 from ...protocol import DataProto
 from ...utils.tracking import ValidationGenerationsLogger
 from ..config.algorithm import AlgoConfig
+from .async_utils import update_weights
 from .core_algos import (
     AdvantageEstimator,
     compute_flow_grpo_outcome_advantage,
@@ -351,6 +352,18 @@ class RayDiffusionPPOTrainer:
 
         return gen_batch
 
+    def _async_gen_next_batch(self, gen_batch):
+        """
+        Call parameter synchronization and asynchronous sequence generation.
+        """
+        # sync weights from actor to rollout
+        update_weights(self.actor_rollout_wg, self.rollout_wg)
+
+        # async generation
+        gen_batch_future = self.rollout_wg.generate_sequences.remote(gen_batch)
+
+        return gen_batch_future
+
     def _validate(self):
         if self.val_reward_fn is None:
             raise ValueError("val_reward_fn must be provided for validation.")
@@ -417,6 +430,7 @@ class RayDiffusionPPOTrainer:
                     print(
                         f"updated test_gen_batch meta info: {test_gen_batch.meta_info}"
                     )
+                update_weights(self.actor_rollout_wg, self.rollout_wg)
                 test_output_gen_batch = self.rollout_wg.generate_sequences(
                     test_gen_batch
                 )
@@ -654,7 +668,8 @@ class RayDiffusionPPOTrainer:
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
-            raise NotImplementedError("async rollout is not implemented yet")
+            # TODO (Mike): do we need implement scheduler?
+            ...
 
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
@@ -842,6 +857,7 @@ class RayDiffusionPPOTrainer:
         )
         next_step_profile = False
 
+        is_first_step = True
         for epoch in range(current_epoch, self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 metrics = {}
@@ -873,13 +889,28 @@ class RayDiffusionPPOTrainer:
                     interleave=True,
                 )
 
+                # one-step-off async policy, start first async generation
+                if is_first_step and not self.config.actor_rollout_ref.hybrid_engine:
+                    # Start the first asynchronous generation task.
+                    batch_data_future = self._async_gen_next_batch(gen_batch)
+                    is_first_step = False
+                    continue # TODO: validate
+
                 is_last_step = self.global_steps >= self.total_training_steps
                 with marked_timer("step", timing_raw):
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
-                        if not self.async_rollout_mode:
+                        if not self.config.actor_rollout_ref.hybrid_engine:
+                            # get previous generation
+                            gen_batch_output = batch_data_future.get()
+
+                            # update weights and async next generation
+                            if not is_last_step:
+                                batch_data_future = self._async_gen_next_batch(gen_batch)
+                        elif not self.async_rollout_mode:
                             if self.config.actor_rollout_ref.rollout.with_reward:
                                 gen_batch_output.meta_info["reward_fn"] = self.reward_fn
+                            update_weights(self.actor_rollout_wg, self.rollout_wg)
                             gen_batch_output = self.rollout_wg.generate_sequences(
                                 gen_batch_output,
                             )

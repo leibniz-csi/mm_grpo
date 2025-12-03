@@ -32,7 +32,7 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.noise_level=0.7 \
     actor_rollout_ref.rollout.dtype=float16 \
     actor_rollout_ref.rollout.free_cache_engine=False \
-    actor_rollout_ref.rollout.mode="sync" \
+    actor_rollout_ref.rollout.mode="async" \
     actor_rollout_ref.rollout.n_gpus_per_node=1 \
     reward_model.reward_manager=diffusion-batch \
     trainer.logger='["console", "wandb"]' \

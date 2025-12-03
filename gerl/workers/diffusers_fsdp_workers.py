@@ -551,23 +551,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             f"After building {self.config.rollout.name} rollout", logger=logger
         )
 
-        # Full params
-        if (
-            torch.distributed.get_world_size() == 1
-            and fsdp_version(self.actor_module_fsdp) == 1
-        ):
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.FULL_STATE_DICT,
-                state_dict_config=FullStateDictConfig(),
-            )
-        elif fsdp_version(self.actor_module_fsdp) == 1:
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.SHARDED_STATE_DICT,
-                state_dict_config=ShardedStateDictConfig(),
-            )
-
         # used for LoRA
         self.base_sync_done = True
         self.layered_summon = self.config.rollout.get("layered_summon", False)
@@ -665,14 +648,9 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         use_shm = self.config.model.get("use_shm", False)
         use_fused_kernels = self.config.model.get("use_fused_kernels", False)
 
-        if self._is_actor or self._is_rollout:
-            # we need the model for actor and rollout
-            if self._is_actor:
-                optim_config = self.config.actor.optim
-                fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
-            else:
-                optim_config = None
-                fsdp_config = FSDPEngineConfig()
+        if self._is_actor:
+            optim_config = self.config.actor.optim
+            fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
 
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
             (
@@ -1032,21 +1010,83 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
 
 class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
-    @register(dispatch_mode=Dispatch.DIRECT_ROLLOUT_METHOD)
-    async def wake_up(self):
-        await self.rollout_mode()
-        return True
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL)  # TODO (Mike): check dispatch mode
+    def get_params(self):
+        base_sync_done = getattr(self, "base_sync_done", True)
+        peft_config = None
+        peft_model = getattr(
+            self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp
+        )
+        if hasattr(peft_model, "peft_config"):  # LoRA
+            peft_config = peft_model.peft_config.get("default", None)
+            params = collect_lora_params(
+                module=self.actor_module_fsdp,
+                layered_summon=self.config.rollout.get("layered_summon", False),
+                base_sync_done=base_sync_done,
+            )
+        else:
+            params = self.actor_module_fsdp.state_dict()
 
-    @register(dispatch_mode=Dispatch.DIRECT_ROLLOUT_METHOD)
-    async def sleep(self):
-        await self.trainer_mode()
-        return True
+        log_gpu_memory_usage("Before offload_fsdp_model_to_cpu", logger=logger)
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
+
+        if peft_config is not None and base_sync_done:
+            per_tensor_param = (
+                params.items() if isinstance(params, dict) else params
+            )  # Fixed: handle dict case
+        else:
+            device = get_device_id()  # used when fsdp2 set cpu_offload_policy
+            per_tensor_param = (
+                (
+                    name,
+                    param.to(device, non_blocking=True).full_tensor()
+                    if isinstance(param, DTensor)
+                    else param,
+                )
+                for name, param in params.items()
+            )
+        return per_tensor_param, peft_config
 
     @register(
-        dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"),
-        blocking=False,
-    )
-    @DistProfiler.annotate(color="red", role="rollout_generate")
-    def generate_sequences(self, prompts: DataProto):
-        # TODO (Mike): implement generate_sequences
-        ...
+        dispatch_mode=Dispatch.ALL_TO_ALL
+    )  # TODO (Mike): 1. check dispatch mode, 2. change to blocking=False
+    async def update_weights(self, per_tensor_param, peft_config):
+        await self.rollout.update_weights(
+            per_tensor_param,
+            peft_config=peft_config,
+            base_sync_done=self.base_sync_done,
+        )
+
+    @register(dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"), blocking=False)
+    def generate_sequences(self, prompts):
+        # TODO: validate blocking=False
+        assert self._is_rollout
+        prompts = prompts.to(get_device_id())
+
+        timing_generate: dict[str, float] = {}
+
+        with simple_timer("generate_sequences", timing_generate):
+            output = self.rollout.generate_sequences(prompts=prompts)
+
+        # We calculate the average timing across all ranks
+        # to make sure meta_info["timing"] is the same
+        timing_generate_topk_ratio, timing_generate_min, timing_generate_max = (
+            topk_reduce_ratio_min_max(timing_generate["generate_sequences"])
+        )
+        timing_generate = reduce_timing(timing_generate)
+        timing_reward = output.meta_info.pop("timing_reward", None)
+        if timing_reward is not None:
+            timing_reward = reduce_timing(timing_reward)
+            timing_generate.update(timing_reward)
+        timing_generate.update(
+            {
+                "generation_timing/max": timing_generate_max,
+                "generation_timing/min": timing_generate_min,
+                "generation_timing/topk_ratio": timing_generate_topk_ratio,
+            }
+        )
+        output.meta_info["timing"] = timing_generate
+        output = output.to("cpu")
+        return output
