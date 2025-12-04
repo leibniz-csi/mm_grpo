@@ -193,8 +193,8 @@ class TaskRunner:
         )
         return resource_pool_manager
 
-    def init_seperated_resource_pool_mgr(self, config):
-        """Initialize resource pool manager for seperated actor and rollout."""
+    def init_separated_resource_pool_mgr(self, config):
+        """Initialize resource pool manager for separated actor and rollout."""
         resource_pool_spec = {
             "actor_pool": [config.actor_rollout_ref.actor.n_gpus_per_node]
             * config.actor_rollout_ref.actor.nnodes,
