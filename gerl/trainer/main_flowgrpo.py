@@ -127,6 +127,15 @@ class TaskRunner:
     def add_actor_rollout_worker(self, config):
         """Add actor rollout worker based on the actor strategy."""
         from verl.single_controller.ray import RayWorkerGroup
+        from verl.trainer.ppo.ray_trainer import Role
+
+        use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
+
+        # use new model engine implementation
+        if use_legacy_worker_impl == "disable":
+            raise NotImplementedError(
+                "Currently, only legacy worker impl is supported."
+            )
 
         if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
             from ..workers.diffusers_fsdp_workers import (
@@ -144,15 +153,20 @@ class TaskRunner:
         else:
             raise NotImplementedError
 
-        from verl.trainer.ppo.ray_trainer import Role
+        if config.actor_rollout_ref.hybrid_engine:
+            self.role_worker_mapping[Role.ActorRollout] = ray.remote(actor_rollout_cls)
+            self.mapping[Role.ActorRollout] = "global_pool"
+        else:
+            self.role_worker_mapping[Role.Actor] = ray.remote(actor_rollout_cls)
+            self.mapping[Role.Actor] = "actor_pool"
 
-        self.role_worker_mapping[Role.ActorRollout] = ray.remote(actor_rollout_cls)
+            self.role_worker_mapping[Role.Rollout] = ray.remote(actor_rollout_cls)
+            self.mapping[Role.Rollout] = "rollout_pool"
 
         return actor_rollout_cls, ray_worker_group_cls
 
     def init_resource_pool_mgr(self, config):
         """Initialize resource pool manager."""
-        from verl.trainer.ppo.ray_trainer import Role
 
         global_pool_id = "global_pool"
         resource_pool_spec = {
@@ -172,7 +186,39 @@ class TaskRunner:
             ] * config.reward_model.nnodes
             resource_pool_spec["reward_pool"] = reward_pool
 
-        self.mapping[Role.ActorRollout] = global_pool_id
+        from verl.trainer.ppo.ray_trainer import ResourcePoolManager
+
+        resource_pool_manager = ResourcePoolManager(
+            resource_pool_spec=resource_pool_spec, mapping=self.mapping
+        )
+        return resource_pool_manager
+
+    def init_separated_resource_pool_mgr(self, config):
+        """Initialize resource pool manager for separated actor and rollout."""
+        assert config.actor_rollout_ref.actor.n_gpus_per_node > 0
+        assert config.actor_rollout_ref.rollout.n_gpus_per_node > 0
+
+        resource_pool_spec = {
+            "actor_pool": [config.actor_rollout_ref.actor.n_gpus_per_node]
+            * config.actor_rollout_ref.actor.nnodes,
+            "rollout_pool": [config.actor_rollout_ref.rollout.n_gpus_per_node]
+            * config.actor_rollout_ref.rollout.nnodes,
+        }
+        if (
+            config.actor_rollout_ref.actor.use_kl_loss
+            and config.actor_rollout_ref.model.lora_rank < 1
+        ):
+            assert config.actor_rollout_ref.ref.n_gpus_per_node > 0
+            resource_pool_spec["ref_pool"] = [
+                config.actor_rollout_ref.ref.n_gpus_per_node
+            ] * config.actor_rollout_ref.ref.nnodes
+
+        if config.reward_model.enable_resource_pool:
+            reward_pool = [
+                config.reward_model.n_gpus_per_node
+            ] * config.reward_model.nnodes
+            resource_pool_spec["reward_pool"] = reward_pool
+
         from verl.trainer.ppo.ray_trainer import ResourcePoolManager
 
         resource_pool_manager = ResourcePoolManager(
@@ -214,9 +260,23 @@ class TaskRunner:
         """Add reference policy worker if KL loss is used."""
         from verl.trainer.ppo.ray_trainer import Role
 
+        # Ref policy has been fused into ActorRolloutRefWorker in new model engine,
+        # we don't need to add a separate ref policy worker group.
+        use_legacy_worker_impl = config.trainer.get("use_legacy_worker_impl", "auto")
+        if use_legacy_worker_impl == "disable":
+            raise NotImplementedError(
+                "Currently, only legacy worker impl is supported."
+            )
+
         if config.actor_rollout_ref.actor.use_kl_loss:
             self.role_worker_mapping[Role.RefPolicy] = ray.remote(ref_policy_cls)
-            self.mapping[Role.RefPolicy] = "global_pool"
+            if config.actor_rollout_ref.hybrid_engine:
+                self.mapping[Role.RefPolicy] = "global_pool"
+            else:
+                if config.actor_rollout_ref.model.lora_rank > 0:
+                    self.mapping[Role.RefPolicy] = "actor_pool"
+                else:
+                    self.mapping[Role.RefPolicy] = "ref_pool"
 
     def run(self, config):
         """Execute the main PPO training workflow.
@@ -232,6 +292,7 @@ class TaskRunner:
         from pprint import pprint
 
         from omegaconf import OmegaConf
+        from verl.utils.fs import copy_to_local
 
         print(f"TaskRunner hostname: {socket.gethostname()}, PID: {os.getpid()}")
         pprint(OmegaConf.to_container(config, resolve=True))
@@ -250,6 +311,13 @@ class TaskRunner:
         # Add a reference policy worker if KL loss or KL reward is used.
         self.add_ref_policy_worker(config, actor_rollout_cls)
 
+        # Download the checkpoint from HDFS to the local machine.
+        # `use_shm` determines whether to use shared memory, which could lead to faster model loading if turned on
+        copy_to_local(
+            config.actor_rollout_ref.model.path,
+            use_shm=config.actor_rollout_ref.model.get("use_shm", False),
+        )
+
         # Load the reward manager for training and validation.
         reward_fn = load_reward_manager(
             config,
@@ -264,7 +332,10 @@ class TaskRunner:
             **config.reward_model.get("reward_kwargs", {}),
         )
 
-        resource_pool_manager = self.init_resource_pool_mgr(config)
+        if config.actor_rollout_ref.hybrid_engine:
+            resource_pool_manager = self.init_resource_pool_mgr(config)
+        else:
+            resource_pool_manager = self.init_separated_resource_pool_mgr(config)
 
         from gerl.utils.dataset.text_dataset import collate_fn
 

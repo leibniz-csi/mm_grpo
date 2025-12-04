@@ -31,15 +31,11 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from safetensors.torch import save_file
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.api import (
-    FullStateDictConfig,
-    ShardedStateDictConfig,
-    StateDictType,
-)
 from torch.distributed.tensor import DTensor
 from verl.single_controller.base import Worker
 from verl.single_controller.base.decorator import (
     Dispatch,
+    Execute,
     make_nd_compute_dataproto_dispatch_fn,
     register,
 )
@@ -551,23 +547,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             f"After building {self.config.rollout.name} rollout", logger=logger
         )
 
-        # Full params
-        if (
-            torch.distributed.get_world_size() == 1
-            and fsdp_version(self.actor_module_fsdp) == 1
-        ):
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.FULL_STATE_DICT,
-                state_dict_config=FullStateDictConfig(),
-            )
-        elif fsdp_version(self.actor_module_fsdp) == 1:
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.SHARDED_STATE_DICT,
-                state_dict_config=ShardedStateDictConfig(),
-            )
-
         # used for LoRA
         self.base_sync_done = True
         self.layered_summon = self.config.rollout.get("layered_summon", False)
@@ -607,9 +586,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
 
         if peft_config is not None and self.base_sync_done:
-            per_tensor_param = (
-                params.items() if isinstance(params, dict) else params
-            )  # Fixed: handle dict case
+            per_tensor_param = params.items() if isinstance(params, dict) else params
         else:
             device = get_device_id()  # used when fsdp2 set cpu_offload_policy
             per_tensor_param = (
@@ -665,14 +642,9 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         use_shm = self.config.model.get("use_shm", False)
         use_fused_kernels = self.config.model.get("use_fused_kernels", False)
 
-        if self._is_actor or self._is_rollout:
-            # we need the model for actor and rollout
-            if self._is_actor:
-                optim_config = self.config.actor.optim
-                fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
-            else:
-                optim_config = None
-                fsdp_config = FSDPEngineConfig()
+        if self._is_actor:
+            optim_config = self.config.actor.optim
+            fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
 
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
             (
@@ -1032,5 +1004,47 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
 
 class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
-    def __init__(self, config: DictConfig, role: str, **kwargs):
-        raise NotImplementedError
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL, execute_mode=Execute.RANK_ZERO)
+    def get_params(self):
+        base_sync_done = getattr(self, "base_sync_done", True)
+        peft_config = None
+        peft_model = getattr(
+            self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp
+        )
+        if hasattr(peft_model, "peft_config"):  # LoRA
+            peft_config = peft_model.peft_config.get("default", None)
+            params = collect_lora_params(
+                module=self.actor_module_fsdp,
+                layered_summon=self.config.rollout.get("layered_summon", False),
+                base_sync_done=base_sync_done,
+            )
+        else:
+            params = self.actor_module_fsdp.state_dict()
+
+        log_gpu_memory_usage("Before offload_fsdp_model_to_cpu", logger=logger)
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
+
+        if peft_config is not None and base_sync_done:
+            per_tensor_param = params.items() if isinstance(params, dict) else params
+        else:
+            device = get_device_id()  # used when fsdp2 set cpu_offload_policy
+            per_tensor_param = (
+                (
+                    name,
+                    param.to(device, non_blocking=True).full_tensor()
+                    if isinstance(param, DTensor)
+                    else param,
+                )
+                for name, param in params.items()
+            )
+        return per_tensor_param, peft_config
+
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL)
+    async def update_weights(self, per_tensor_param, peft_config):
+        await self.rollout.update_weights(
+            per_tensor_param,
+            peft_config=peft_config,
+            base_sync_done=self.base_sync_done,
+        )

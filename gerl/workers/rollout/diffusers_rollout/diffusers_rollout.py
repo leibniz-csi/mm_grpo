@@ -191,14 +191,11 @@ class DiffusersSyncRollout(BaseRollout):
             )
             # launch async micro_batch reward computing
             if self.config.with_reward:
-                micro_batch.batch = TensorDict(
-                    {
-                        "responses": output.images,
-                    },
-                    batch_size=len(output.images),
-                )
                 future_reward = compute_reward_async.remote(
-                    data=micro_batch,
+                    data=DataProto(
+                        batch=result.select("responses"),
+                        non_tensor_batch=micro_batch.non_tensor_batch,
+                    ),
                     reward_fn=reward_fn,
                 )
                 future_rewards.append(future_reward)
@@ -284,6 +281,9 @@ class DiffusersSyncRollout(BaseRollout):
 
 
 class DiffusersAsyncRollout(DiffusersSyncRollout):
-    def __init__(self, config, model_config, device_mesh):
-        super().__init__(config, model_config, device_mesh)
-        raise NotImplementedError("DiffusersAsyncRollout is not implemented yet.")
+    """
+    Async rollout currently shares the same implementation as DiffusersSyncRollout.
+    This class exists for future extension; a full async implementation may be added later.
+    """
+
+    ...

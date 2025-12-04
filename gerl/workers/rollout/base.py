@@ -80,6 +80,10 @@ _ROLLOUT_REGISTRY = {
         "diffusers",
         "sync",
     ): "gerl.workers.rollout.diffusers_rollout.DiffusersSyncRollout",
+    (
+        "diffusers",
+        "async",
+    ): "gerl.workers.rollout.diffusers_rollout.DiffusersAsyncRollout",
 }
 
 
