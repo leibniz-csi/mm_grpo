@@ -195,6 +195,9 @@ class TaskRunner:
 
     def init_separated_resource_pool_mgr(self, config):
         """Initialize resource pool manager for separated actor and rollout."""
+        assert config.actor_rollout_ref.actor.n_gpus_per_node > 0
+        assert config.actor_rollout_ref.rollout.n_gpus_per_node > 0
+
         resource_pool_spec = {
             "actor_pool": [config.actor_rollout_ref.actor.n_gpus_per_node]
             * config.actor_rollout_ref.actor.nnodes,
@@ -205,6 +208,7 @@ class TaskRunner:
             config.actor_rollout_ref.actor.use_kl_loss
             and config.actor_rollout_ref.model.lora_rank < 1
         ):
+            assert config.actor_rollout_ref.ref.n_gpus_per_node > 0
             resource_pool_spec["ref_pool"] = [
                 config.actor_rollout_ref.ref.n_gpus_per_node
             ] * config.actor_rollout_ref.ref.nnodes

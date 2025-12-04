@@ -586,9 +586,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
 
         if peft_config is not None and self.base_sync_done:
-            per_tensor_param = (
-                params.items() if isinstance(params, dict) else params
-            )  # Fixed: handle dict case
+            per_tensor_param = params.items() if isinstance(params, dict) else params
         else:
             device = get_device_id()  # used when fsdp2 set cpu_offload_policy
             per_tensor_param = (
@@ -1029,9 +1027,7 @@ class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
         log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
 
         if peft_config is not None and base_sync_done:
-            per_tensor_param = (
-                params.items() if isinstance(params, dict) else params
-            )  # Fixed: handle dict case
+            per_tensor_param = params.items() if isinstance(params, dict) else params
         else:
             device = get_device_id()  # used when fsdp2 set cpu_offload_policy
             per_tensor_param = (
@@ -1045,7 +1041,7 @@ class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
             )
         return per_tensor_param, peft_config
 
-    @register(dispatch_mode=Dispatch.ALL_TO_ALL, execute_mode=Execute.RANK_ZERO)
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL)
     async def update_weights(self, per_tensor_param, peft_config):
         await self.rollout.update_weights(
             per_tensor_param,

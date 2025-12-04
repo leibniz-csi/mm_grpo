@@ -280,4 +280,10 @@ class DiffusersSyncRollout(BaseRollout):
         set_peft_model_state_dict(self.pipeline.transformer, dict(weights))
 
 
-class DiffusersAsyncRollout(DiffusersSyncRollout): ...
+class DiffusersAsyncRollout(DiffusersSyncRollout):
+    """
+    Async rollout currently shares the same implementation as DiffusersSyncRollout.
+    This class exists for future extension; a full async implementation may be added later.
+    """
+
+    ...
