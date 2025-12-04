@@ -1,0 +1,15 @@
+NOTICE
+------
+
+This project includes code that has been modified from the following source:
+
+  Repository: https://github.com/volcengine/verl
+  Original Author: Volcengine
+  License: Apache License 2.0
+
+Modifications:
+  - The code has been adapted and altered for use in this project.
+  - Changes may include restructuring, enhancements, or additional functionality.
+
+All original rights remain with the respective authors. This NOTICE file is
+provided to comply with attribution requirements under the Apache License 2.0.
