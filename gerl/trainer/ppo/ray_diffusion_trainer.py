@@ -659,6 +659,7 @@ class RayDiffusionPPOTrainer:
             # Async mode currently does not require a scheduler because requests are handled directly by the worker group.
             # If future async implementations require scheduling, create a follow-up issue to track this work.
             self.async_rollout_mode = True
+
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
 
