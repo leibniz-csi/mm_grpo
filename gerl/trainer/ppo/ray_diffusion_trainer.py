@@ -656,9 +656,9 @@ class RayDiffusionPPOTrainer:
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
         if self.config.actor_rollout_ref.rollout.mode == "async":
-            # TODO (Mike): do we need implement scheduler?
-            ...
-
+            # Async mode currently does not require a scheduler because requests are handled directly by the worker group.
+            # If future async implementations require scheduling, create a follow-up issue to track this work.
+            self.async_rollout_mode = True
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
 
