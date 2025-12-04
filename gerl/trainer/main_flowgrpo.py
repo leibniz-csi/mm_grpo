@@ -331,7 +331,7 @@ class TaskRunner:
         if config.actor_rollout_ref.hybrid_engine:
             resource_pool_manager = self.init_resource_pool_mgr(config)
         else:
-            resource_pool_manager = self.init_seperated_resource_pool_mgr(config)
+            resource_pool_manager = self.init_separated_resource_pool_mgr(config)
 
         from gerl.utils.dataset.text_dataset import collate_fn
 

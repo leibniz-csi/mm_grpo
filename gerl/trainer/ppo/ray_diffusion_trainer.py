@@ -347,7 +347,10 @@ class RayDiffusionPPOTrainer:
         )
 
         # For agent loop or async reward compute during rollout, we need reward model keys to compute score.
-        if self.async_rollout_mode or self.config.actor_rollout_ref.rollout.with_reward:
+        if (
+            self.async_rollout_manager
+            or self.config.actor_rollout_ref.rollout.with_reward
+        ):
             gen_batch.non_tensor_batch.update(batch.non_tensor_batch)
 
         return gen_batch
@@ -356,7 +359,7 @@ class RayDiffusionPPOTrainer:
         """
         Call parameter synchronization and asynchronous sequence generation.
         """
-        # sync weights from actor to rollout
+        # sync weights from actor to rollout if actor and rollout do not share resource pool
         update_weights(self.actor_rollout_wg, self.rollout_wg)
 
         # apply async reward during rollout
@@ -364,7 +367,7 @@ class RayDiffusionPPOTrainer:
             gen_batch.meta_info["reward_fn"] = reward_fn
 
         # sync or async rollout generation
-        gen_batch_output = self.rollout_wg.generate_sequences.remote(gen_batch)
+        gen_batch_output = self.rollout_wg.generate_sequences(gen_batch)
 
         return gen_batch_output
 
