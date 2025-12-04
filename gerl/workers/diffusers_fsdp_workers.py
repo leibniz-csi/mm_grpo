@@ -1045,7 +1045,7 @@ class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
             )
         return per_tensor_param, peft_config
 
-    @register(dispatch_mode=Dispatch.ALL_TO_ALL, execute_mode=Execute.RANK_ZERO)
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL)
     async def update_weights(self, per_tensor_param, peft_config):
         await self.rollout.update_weights(
             per_tensor_param,

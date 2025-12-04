@@ -410,14 +410,11 @@ class RayDiffusionPPOTrainer:
                 "validate": True,
                 "global_steps": self.global_steps,
             }
+            if self.config.actor_rollout_ref.rollout.with_reward:
+                test_gen_batch.meta_info["reward_fn"] = self.val_reward_fn
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
             if not self.async_rollout_mode:
-                if self.config.actor_rollout_ref.rollout.with_reward:
-                    test_gen_batch.meta_info["reward_fn"] = self.val_reward_fn
-                    print(
-                        f"updated test_gen_batch meta info: {test_gen_batch.meta_info}"
-                    )
                 update_weights(self.actor_rollout_wg, self.rollout_wg)
                 test_output_gen_batch = self.rollout_wg.generate_sequences(
                     test_gen_batch
@@ -655,10 +652,6 @@ class RayDiffusionPPOTrainer:
 
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
-        if self.config.actor_rollout_ref.rollout.mode == "async":
-            # Async mode currently does not require a scheduler because requests are handled directly by the worker group.
-            # If future async implementations require scheduling, create a follow-up issue to track this work.
-            self.async_rollout_mode = True
 
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
