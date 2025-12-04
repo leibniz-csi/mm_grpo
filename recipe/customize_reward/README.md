@@ -65,7 +65,7 @@ python3 -m gerl.trainer.main_flowgrpo \
 
 **Step4: tips and testing.**
 
-You'd better have a unit test script for your scorer before applying your reward to run training, and add your testing in `tests/reward_score/run_reward_fns.sh`.
+Before applying your custom reward in training, create a unit test for your scorer and add it to `tests/reward_score/run_reward_fns.sh`.
 
 For example, `test_paddle_ocr_scorer` in `gerl/utils/reward_score/ocr.py` and `test_qwen_vl_ocr_vllm_scorer` in `gerl/utils/reward_score/vllm.py`.
 
@@ -81,5 +81,3 @@ If you implement a rule-based reward, you only need to compute reward values in 
 `gerl/utils/reward_score/vllm.py`'s `QwenVLOCRVLLMScorer` is an example for calling "Qwen2.5-VL" model via [vllm](https://github.com/vllm-project/vllm) as the OCR reward scorer.
 1. In `__init__()` initialize vllm client setup.
 2. In `__call__()`, prepare input prompts and call the model to get responses via vllm serving; then we compute reward values.
-
-/
