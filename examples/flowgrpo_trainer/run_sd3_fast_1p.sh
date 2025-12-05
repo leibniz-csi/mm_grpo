@@ -6,8 +6,6 @@ python3 -m gerl.trainer.main_flowgrpo \
     data.val_max_samples=32 \
     data.max_prompt_length=512 \
     data.truncation=error \
-    data.data_source=ocr \
-    data.reward_fn='["paddle-ocr"]' \
     actor_rollout_ref.model.path=stabilityai/stable-diffusion-3.5-medium \
     actor_rollout_ref.model.enable_gradient_checkpointing=False \
     actor_rollout_ref.model.lora_rank=32 \
@@ -33,7 +31,9 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.rollout.sde_window_range="[0,5]" \
     actor_rollout_ref.rollout.dtype=float16 \
     actor_rollout_ref.rollout.free_cache_engine=False \
-    reward_model.reward_manager=diffusion-batch \
+    actor_rollout_ref.rollout.with_reward=False \
+    reward_model.enable=True \
+    reward_model.strategy=paddle_ocr \
     trainer.logger='["console", "wandb"]' \
     trainer.project_name='flow_grpo' \
     trainer.experiment_name='sd35_m_ocr_fast' \

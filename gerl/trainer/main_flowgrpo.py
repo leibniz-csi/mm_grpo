@@ -241,9 +241,14 @@ class TaskRunner:
             )
             if use_legacy_worker_impl in ["auto", "enable"]:
                 if config.reward_model.strategy in {"fsdp", "fsdp2"}:
-                    from verl.workers.fsdp_workers import RewardModelWorker
+                    raise NotImplementedError
                 elif config.reward_model.strategy == "megatron":
-                    from verl.workers.megatron_workers import RewardModelWorker
+                    raise NotImplementedError
+                elif config.reward_model.strategy == "paddle_ocr":
+                    # TODO (Mike): This might not be the best place to put the import.
+                    from ..workers.reward_model.paddle import (
+                        PaddleOCRRewardModelWorker as RewardModelWorker,
+                    )
                 else:
                     raise NotImplementedError
             elif use_legacy_worker_impl == "disable":
