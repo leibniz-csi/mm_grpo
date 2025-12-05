@@ -899,8 +899,10 @@ class RayDiffusionPPOTrainer:
 
                     if not self.config.actor_rollout_ref.rollout.with_reward:
                         with marked_timer("reward", timing_raw, color="yellow"):
+                            # compute reward model score
                             if self.use_rm and "rm_scores" not in batch.batch.keys():
-                                raise NotImplementedError  # TODO： reward model worker
+                                reward_tensor = self.rm_wg.compute_rm_score(batch)
+                                batch = batch.union(reward_tensor)
 
                             if self.config.reward_model.launch_reward_fn_async:
                                 future_reward = compute_reward_async.remote(
