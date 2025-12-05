@@ -672,7 +672,7 @@ class RayDiffusionPPOTrainer:
 
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
-        self.one_step_off_policy = False
+        self.one_step_off_policy = False  # naive synchronous training
         self.async_rollout_manager = None
         if self.config.actor_rollout_ref.rollout.mode == "async":
             # Async mode currently does not require a scheduler because requests are handled directly by the worker group.
@@ -681,6 +681,7 @@ class RayDiffusionPPOTrainer:
 
             if (
                 not self.hybrid_engine
+                and (self.config.actor_rollout_ref.async_strategy == "one-step-off")
                 and self.config.actor_rollout_ref.actor.n_gpus_per_node
                 and self.config.actor_rollout_ref.rollout.n_gpus_per_node
             ):
