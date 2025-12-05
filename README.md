@@ -50,7 +50,7 @@ Clone this repository:
 git clone https://github.com/leibniz-csi/mm_grpo.git && cd mm_grpo
 
 # Install other required packages for specific rewards, e.g., for the Paddle-OCR reward:
-# pip install paddlepaddle==2.6.2 paddleocr==2.9.1 python-Levenshtein
+# pip install paddlepaddle "paddleocr>=3.0" python-Levenshtein
 ```
 
 

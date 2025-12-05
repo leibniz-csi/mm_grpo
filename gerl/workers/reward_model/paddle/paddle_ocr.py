@@ -47,8 +47,14 @@ class PaddleOCRRewardModelWorker(Worker, DistProfilerExtension):
     def _build_model(self, config):
         from paddleocr import PaddleOCR
 
+        # TDDO (Mike): pass the config parameters
         reward_module = PaddleOCR(
-            use_angle_cls=False, lang="en", use_gpu=False, show_log=False
+            use_doc_orientation_classify=False,
+            use_doc_unwarping=False,
+            use_textline_orientation=False,
+            lang="en",
+            ocr_version="PP-OCRv5",
+            device="cpu",
         )
         return reward_module
 
@@ -107,14 +113,18 @@ class PaddleOCRRewardModelWorker(Worker, DistProfilerExtension):
                 img = np.array(img)
 
             try:
-                # OCR recognition
-                result = self.reward_module.ocr(img, cls=False)
-                # Extract recognized text (handle possible multi-line results)
-                recognized_text = (
-                    "".join([res[1][0] if res[1][1] > 0 else "" for res in result[0]])
-                    if result[0]
-                    else ""
-                )
+                result = self.reward_module.predict(img)
+                recognized_text = ""
+                if result[0]:
+                    rec_texts = result[0]["rec_texts"]
+                    rec_scores = result[0]["rec_scores"]
+                    # Extract recognized text (handle possible multi-line results)
+                    recognized_text = "".join(
+                        [
+                            rec_texts[idx] if score > 0 else ""
+                            for idx, score in enumerate(rec_scores)
+                        ]
+                    )
 
                 recognized_text = recognized_text.replace(" ", "").lower()
                 prompt = prompt.replace(" ", "").lower()

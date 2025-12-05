@@ -384,13 +384,6 @@ class RayDiffusionPPOTrainer:
                 interleave=True,
             )
 
-            # we only do validation on rule-based rm
-            if (
-                self.config.reward_model.enable
-                and test_batch[0].non_tensor_batch["reward_model"]["style"] == "model"
-            ):
-                return {}
-
             # Store original inputs
             sample_inputs.extend(test_batch.non_tensor_batch["prompt"])
             sample_uids.extend(test_batch.non_tensor_batch["uid"])
@@ -432,6 +425,11 @@ class RayDiffusionPPOTrainer:
 
             test_batch = test_batch.union(test_output_gen_batch)
             test_batch.meta_info["validate"] = True
+
+            # compute reward model score
+            if self.use_rm and "rm_scores" not in test_output_gen_batch.batch.keys():
+                reward_tensor = self.rm_wg.compute_rm_score(test_output_gen_batch)
+                test_output_gen_batch = test_output_gen_batch.union(reward_tensor)
 
             reward_extra_info = None
             if self.config.actor_rollout_ref.rollout.with_reward:
