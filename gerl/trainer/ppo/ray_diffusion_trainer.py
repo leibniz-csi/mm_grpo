@@ -679,11 +679,8 @@ class RayDiffusionPPOTrainer:
             # If future async implementations require scheduling, create a follow-up issue to track this work.
             self.async_rollout_mode = True
 
-            if (
-                not self.hybrid_engine
-                and (self.config.actor_rollout_ref.async_strategy == "one-step-off")
-                and self.config.actor_rollout_ref.actor.n_gpus_per_node
-                and self.config.actor_rollout_ref.rollout.n_gpus_per_node
+            if not self.hybrid_engine and (
+                self.config.actor_rollout_ref.async_strategy == "one-step-off"
             ):
                 self.one_step_off_policy = True
 
