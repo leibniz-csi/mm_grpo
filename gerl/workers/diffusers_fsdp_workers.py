@@ -1048,3 +1048,37 @@ class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
             peft_config=peft_config,
             base_sync_done=self.base_sync_done,
         )
+
+    @register(
+        dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"),
+        blocking=False,
+    )
+    def generate_sequences(self, prompts):
+        assert self._is_rollout
+        prompts = prompts.to(get_device_id())
+
+        timing_generate: dict[str, float] = {}
+
+        with simple_timer("generate_sequences", timing_generate):
+            output = self.rollout.generate_sequences(prompts=prompts)
+
+        # We calculate the average timing across all ranks
+        # to make sure meta_info["timing"] is the same
+        timing_generate_topk_ratio, timing_generate_min, timing_generate_max = (
+            topk_reduce_ratio_min_max(timing_generate["generate_sequences"])
+        )
+        timing_generate = reduce_timing(timing_generate)
+        timing_reward = output.meta_info.pop("timing_reward", None)
+        if timing_reward is not None:
+            timing_reward = reduce_timing(timing_reward)
+            timing_generate.update(timing_reward)
+        timing_generate.update(
+            {
+                "generation_timing/max": timing_generate_max,
+                "generation_timing/min": timing_generate_min,
+                "generation_timing/topk_ratio": timing_generate_topk_ratio,
+            }
+        )
+        output.meta_info["timing"] = timing_generate
+        output = output.to("cpu")
+        return output

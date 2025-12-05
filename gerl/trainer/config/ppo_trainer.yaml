@@ -40,6 +40,11 @@ actor_rollout_ref:
   # Whether it's a hybrid engine, currently only supports hybrid engine
   hybrid_engine: true
 
+  # Training async strategy. Options: "one-step-off"(default), "naive"
+  # "one-step-off": requires hybrid_engine=True, actor.n_gpus_per_node>0, rollout.n_gpus_per_node>0
+  # "naive": fall back to synchronous training
+  async_strategy: one-step-off
+
   # Timeout for operations executed against the process group
   nccl_timeout: 600
 

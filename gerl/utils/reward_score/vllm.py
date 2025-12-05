@@ -151,7 +151,8 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
 def test_qwen_vl_ocr_vllm_scorer():
     scorer = QwenVLOCRVLLMScorer("http://0.0.0.0:9529/v1")
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
-    prompts = ['a photo of displaying "OCR".'] * len(images)
+    # original prompt: 'a photo of displaying "OCR".'
+    prompts = ["OCR"] * len(images)
     pil_images = [Image.open(img) for img in images]
     print(scorer(images=pil_images, prompts=prompts))
 

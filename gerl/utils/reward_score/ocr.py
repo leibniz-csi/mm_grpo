@@ -33,7 +33,6 @@ class PaddleOCRScorer(Scorer):
         """
         from paddleocr import PaddleOCR
 
-        # TODO (susan): assign specific GPU id?
         self.ocr = PaddleOCR(
             use_angle_cls=False,
             lang="en",
@@ -111,9 +110,8 @@ def compute_score(images, prompts):
 def test_paddle_ocr_scorer():
     example_image_path = "assets/generated_nyc.jpg"
     example_image = Image.open(example_image_path)
-    example_prompt = (
-        'New York Skyline with "Hello World" written with fireworks on the sky'
-    )
+    # original prompt: 'New York Skyline with "Hello World" written with fireworks on the sky'
+    example_prompt = "Hello World"
     # Instantiate scorer
     scorer = PaddleOCRScorer(use_gpu=False)
     # Call scorer and print result

@@ -347,10 +347,29 @@ class RayDiffusionPPOTrainer:
         )
 
         # For agent loop or async reward compute during rollout, we need reward model keys to compute score.
-        if self.async_rollout_mode or self.config.actor_rollout_ref.rollout.with_reward:
+        if (
+            self.async_rollout_manager
+            or self.config.actor_rollout_ref.rollout.with_reward
+        ):
             gen_batch.non_tensor_batch.update(batch.non_tensor_batch)
 
         return gen_batch
+
+    def _gen_next_batch(self, gen_batch, reward_fn=None):
+        """
+        Call parameter synchronization and asynchronous sequence generation.
+        """
+        # sync weights from actor to rollout if actor and rollout do not share resource pool
+        update_weights(self.actor_rollout_wg, self.rollout_wg)
+
+        # apply async reward during rollout
+        if self.config.actor_rollout_ref.rollout.with_reward:
+            gen_batch.meta_info["reward_fn"] = reward_fn
+
+        # sync or async rollout generation
+        gen_batch_output = self.rollout_wg.generate_sequences(gen_batch)
+
+        return gen_batch_output
 
     def _validate(self):
         if self.val_reward_fn is None:
@@ -410,15 +429,16 @@ class RayDiffusionPPOTrainer:
                 "validate": True,
                 "global_steps": self.global_steps,
             }
-            if self.config.actor_rollout_ref.rollout.with_reward:
-                test_gen_batch.meta_info["reward_fn"] = self.val_reward_fn
             print(f"test_gen_batch meta info: {test_gen_batch.meta_info}")
 
-            if not self.async_rollout_mode:
-                update_weights(self.actor_rollout_wg, self.rollout_wg)
-                test_output_gen_batch = self.rollout_wg.generate_sequences(
-                    test_gen_batch
+            if not self.async_rollout_manager:
+                test_output_gen_batch = self._gen_next_batch(
+                    test_gen_batch, self.val_reward_fn
                 )
+                if (
+                    self.async_rollout_mode
+                ):  # do not run async rollout during validation
+                    test_output_gen_batch = test_output_gen_batch.get()
             else:
                 test_output_gen_batch = self.async_rollout_manager.generate_sequences(
                     test_gen_batch
@@ -652,6 +672,17 @@ class RayDiffusionPPOTrainer:
 
         # create async rollout manager and request scheduler
         self.async_rollout_mode = False
+        self.one_step_off_policy = False  # naive synchronous training
+        self.async_rollout_manager = None
+        if self.config.actor_rollout_ref.rollout.mode == "async":
+            # Async mode currently does not require a scheduler because requests are handled directly by the worker group.
+            # If future async implementations require scheduling, create a follow-up issue to track this work.
+            self.async_rollout_mode = True
+
+            if not self.hybrid_engine and (
+                self.config.actor_rollout_ref.async_strategy == "one-step-off"
+            ):
+                self.one_step_off_policy = True
 
     def _save_checkpoint(self):
         from verl.utils.fs import local_mkdir_safe
@@ -839,6 +870,7 @@ class RayDiffusionPPOTrainer:
         )
         next_step_profile = False
 
+        is_first_step = True
         for epoch in range(current_epoch, self.config.trainer.total_epochs):
             for batch_dict in self.train_dataloader:
                 metrics = {}
@@ -865,27 +897,41 @@ class RayDiffusionPPOTrainer:
 
                 # pass global_steps to trace
                 gen_batch.meta_info["global_steps"] = self.global_steps
-                gen_batch_output = gen_batch.repeat(
+                gen_batch = gen_batch.repeat(
                     repeat_times=self.config.actor_rollout_ref.rollout.n,
                     interleave=True,
                 )
+
+                # one-step-off async policy, start first async generation
+                if is_first_step and self.one_step_off_policy:
+                    # Start the first asynchronous generation task.
+                    batch_data_future = self._gen_next_batch(gen_batch, self.reward_fn)
+                    is_first_step = False
+                    continue
 
                 is_last_step = self.global_steps >= self.total_training_steps
                 with marked_timer("step", timing_raw):
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
-                        if not self.async_rollout_mode:
-                            if self.config.actor_rollout_ref.rollout.with_reward:
-                                gen_batch_output.meta_info["reward_fn"] = self.reward_fn
-                            update_weights(self.actor_rollout_wg, self.rollout_wg)
-                            gen_batch_output = self.rollout_wg.generate_sequences(
-                                gen_batch_output,
+                        if self.one_step_off_policy:
+                            # get previous generation
+                            gen_batch_output = batch_data_future.get()
+
+                            # update weights and async next generation
+                            if not is_last_step:
+                                batch_data_future = self._gen_next_batch(
+                                    gen_batch, self.reward_fn
+                                )
+                        elif not self.async_rollout_manager:
+                            gen_batch_output = self._gen_next_batch(
+                                gen_batch, self.reward_fn
                             )
+                            # Currently, non-one-step-off async policy does not really run async rollout.
+                            if self.async_rollout_mode:
+                                gen_batch_output = gen_batch_output.get()
                         else:
                             gen_batch_output = (
-                                self.async_rollout_manager.generate_sequences(
-                                    gen_batch_output
-                                )
+                                self.async_rollout_manager.generate_sequences(gen_batch)
                             )
 
                         timing_raw.update(gen_batch_output.meta_info["timing"])

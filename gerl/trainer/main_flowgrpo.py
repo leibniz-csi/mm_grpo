@@ -138,6 +138,11 @@ class TaskRunner:
             )
 
         if config.actor_rollout_ref.actor.strategy in {"fsdp", "fsdp2"}:
+            if not config.actor_rollout_ref.hybrid_engine:
+                assert config.actor_rollout_ref.rollout.mode == "async", (
+                    "When hybrid_engine=False, separated actor/rollout only supports async mode"
+                )
+
             from ..workers.diffusers_fsdp_workers import (
                 AsyncDiffusersActorRolloutRefWorker,
                 DiffusersActorRolloutRefWorker,
