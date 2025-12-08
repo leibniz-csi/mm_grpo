@@ -260,8 +260,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
 
-        from .diffusers_model.schedulers import FlowMatchSDEDiscreteScheduler
-
         assert role in ["actor", "ref"]
 
         log_gpu_memory_usage(f"Before init {role} from Diffusers", logger=logger)
@@ -287,10 +285,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             )
 
             actor_module.requires_grad_(not self._is_lora)
-
-            scheduler = FlowMatchSDEDiscreteScheduler.from_pretrained(
-                pretrained_model_name_or_path=local_path, subfolder="scheduler"
-            )
 
             if use_fused_kernels:
                 actor_module.fuse_qkv_projections()
@@ -492,7 +486,16 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             actor_optimizer = None
             actor_lr_scheduler = None
 
-        return actor_module_fsdp, actor_optimizer, actor_lr_scheduler, scheduler
+        return actor_module_fsdp, actor_optimizer, actor_lr_scheduler
+
+    def _build_scheduler(self, model_path):
+        # TODO (Mike): generalize to other diffusers scheduler later
+        from .diffusers_model.schedulers import FlowMatchSDEDiscreteScheduler
+
+        scheduler = FlowMatchSDEDiscreteScheduler.from_pretrained(
+            pretrained_model_name_or_path=model_path, subfolder="scheduler"
+        )
+        return scheduler
 
     def _build_rollout(self):
         # 1. parse rollout and huggingface model config
@@ -647,25 +650,24 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
 
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
-            (
-                self.actor_module_fsdp,
-                self.actor_optimizer,
-                self.actor_lr_scheduler,
-                self.scheduler,
-            ) = self._build_model_optimizer(
-                model_path=local_path,
-                fsdp_config=fsdp_config,
-                optim_config=optim_config,
-                override_model_config=override_model_config,
-                use_fused_kernels=use_fused_kernels,
-                enable_gradient_checkpointing=self.config.model.get(
-                    "enable_gradient_checkpointing", False
-                ),
-                role="actor",
-                enable_activation_offload=self.config.model.get(
-                    "enable_activation_offload", False
-                ),
+            self.actor_module_fsdp, self.actor_optimizer, self.actor_lr_scheduler = (
+                self._build_model_optimizer(
+                    model_path=local_path,
+                    fsdp_config=fsdp_config,
+                    optim_config=optim_config,
+                    override_model_config=override_model_config,
+                    use_fused_kernels=use_fused_kernels,
+                    enable_gradient_checkpointing=self.config.model.get(
+                        "enable_gradient_checkpointing", False
+                    ),
+                    role="actor",
+                    enable_activation_offload=self.config.model.get(
+                        "enable_activation_offload", False
+                    ),
+                )
             )
+
+            self.scheduler = self._build_scheduler(model_path=local_path)
 
             # get the original unwrapped module
             if fsdp_version(self.actor_module_fsdp) == 1:
@@ -712,6 +714,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                 use_fused_kernels=use_fused_kernels,
                 role="ref",
             )[0]
+            self.scheduler = self._build_scheduler(model_path=local_path)
             OmegaConf.set_struct(self.config.ref, True)
             with open_dict(self.config.ref):
                 self.config.ref.use_fused_kernels = use_fused_kernels
