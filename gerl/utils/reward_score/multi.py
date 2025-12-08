@@ -26,12 +26,13 @@ AVAILABLE_SCORERS = {
     "paddle-ocr": ("ocr", "PaddleOCRScorer"),
     # "jpeg-imcompressibility": ("jpeg_imcompressibility", "JpegImcompressibilityScorer"),
     "qwenvl-ocr-vllm": ("vllm", "QwenVLOCRVLLMScorer"),
+    "unified-reward-ocr-vllm": ("vllm", "UnifiedRewardOCRVLLMScorer"),
+    "unified-reward-vllm": ("vllm", "UnifiedRewardVLLMScorer"),
     # "pickscore": ("pickscore", "PickScoreScorer"),
     # "qwenvl": ("qwenvl", "QwenVLScorer"),
     # "aesthetic": ("aesthetic", "AestheticScorer"),
     # "jpeg-compressibility": ("compression", "JpegCompressibilityScorer"),
     # "qwenvl-vllm": ("vllm", "QwenVLVLLMScorer"),
-    # "unified-reward-vllm": ("vllm", "UnifiedRewardVLLMScorer"),
 }
 
 
