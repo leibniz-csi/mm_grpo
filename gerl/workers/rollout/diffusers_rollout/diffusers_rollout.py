@@ -214,8 +214,7 @@ class DiffusersSyncRollout(BaseRollout):
             timing_reward: dict[str, float] = {}
             with simple_timer("reward", timing_reward):
                 # concatenate reward result batches
-                for future in future_rewards:
-                    reward_tensor, reward_extra_infos_dict = ray.get(future)
+                for reward_tensor, reward_extra_infos_dict in ray.get(future_rewards):
                     reward_tensors.append(reward_tensor)
                     for k, v in reward_extra_infos_dict.items():
                         reward_extra_infos_dicts[k].extend(v)
