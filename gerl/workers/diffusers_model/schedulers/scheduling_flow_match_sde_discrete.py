@@ -171,7 +171,7 @@ class FlowMatchSDEDiscreteScheduler(FlowMatchEulerDiscreteScheduler):
                     -1, *([1] * (len(sample.shape) - 1))
                 )
 
-            sigma_max = self.sigmas[1].item()
+            sigma_max = self.sigmas[1]
             dt = sigma_next - sigma
 
         if sde_type == "sde":
