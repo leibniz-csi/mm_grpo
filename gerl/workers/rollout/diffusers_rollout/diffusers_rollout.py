@@ -287,8 +287,12 @@ class DiffusersSyncRollout(BaseRollout):
         Args:
             weights: A generator that yields the name of the weight tensor and the tensor itself.
         """
-        # TODO (mike): this might be memory inefficient, need to optimize
-        self.pipeline.transformer.load_state_dict(dict(weights), strict=False)
+        state_dict = self.pipeline.transformer.state_dict()
+        for name, tensor in weights:
+            if name in state_dict:
+                state_dict[name].copy_(tensor)
+            else:
+                logger.warning(f"Parameter {name} not found in model state_dict.")
 
 
 class DiffusersAsyncRollout(DiffusersSyncRollout):
