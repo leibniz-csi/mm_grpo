@@ -26,6 +26,7 @@ A fast and easy-to-use library to support RL training for multi-modal generative
 
 - [x] [PaddleOCR](https://arxiv.org/abs/2109.03144)
 - [x] [Qwen2.5VL-OCR](https://arxiv.org/abs/2502.13923)
+- [x] [UnifiedReward](https://arxiv.org/abs/2503.05236)
 
 
 *Note: This repository is continuously updated. New models, rewards, and algorithms will be added soon.*
