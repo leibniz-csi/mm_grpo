@@ -9,12 +9,12 @@ GeRL provides a general framework for generative model RL post-training. By defa
 
 ## Decoupled Actor and Rollout
 > [!NOTE]
-> **Coupled actor and rollout is used by default.**
+> **NOT used by default. Coupled actor and rollout is used by default.**
 
 **Introduction:**  Decouple actor and rollout into standalone resource pools, and use async rollout.
 
 ## Usage
-`hybrid_engine` is applied by default, i.e. coupled actor and rollout.<br>
+`hybrid_engine` is applied by default, i.e., coupled actor and rollout.<br>
 To decouple actor and rollout into standalone resource pools, and use async rollout, set configs:
 ```bash
 actor_rollout_ref.hybrid_engine=False
@@ -29,7 +29,7 @@ actor_rollout_ref.rollout.mode="async"
 
 <!-- TODO: add an illustration. -->
 
-Reference: [Flow-GRPO](https://github.com/yifan123/flow_grpo).
+Reference: [ddpo-pytorch](https://github.com/kvablack/ddpo-pytorch/blob/main/scripts/train.py#L355).
 
 ## Usage
 The `with_reward` function is applied by default by setting following config:
@@ -41,7 +41,7 @@ actor_rollout_ref.rollout.with_reward=True
 
 > All experiments were conducted on *NVIDIA H800* GPUs using the OCR reward.
 
-Training Throughput Comparisons with `with_reward=False`:
+The following table shows the training throughput increase when using asynchronous reward computing (with_reward=True) compared to synchronous reward computing (with_reward=False):
 
 | Model | Algorithm | Hybrid Engine | # Cards | Reward Fn | Batch Size | `rollout.n` | training samples per step| `ppo_micro_batch_size_per_gpu` | Speedup (sec/step)| Throughput |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -65,7 +65,7 @@ Left: Synchronous training. Right: One-step-off asynchronous training
 </center>
 
 References:
-[verl Recipe: One Step Off Policy Async Trainer](https://github.com/volcengine/verl/tree/main/recipe/one_step_off_policy).<br>
+[verl Recipe: One Step Off Policy Async Trainer](https://github.com/volcengine/verl/tree/main/recipe/one_step_off_policy); <br>
 [Asynchronous RLHF: Faster and More Efficient Off-Policy RL for Language Models](https://arxiv.org/abs/2410.18252)
 
 ## Usage
@@ -81,14 +81,14 @@ actor_rollout_ref.async_strategy="one-step-off"
 
 > All experiments were conducted on *NVIDIA H800* GPUs using the OCR reward.
 
-Training GPU hours required to reach and maintain a validation reward score of 0.9:
+Training GPU hours required to reach and maintain a validation reward score of approximately 0.9:
 
 
-| Model   | Algorithm      | # Cards |   Reward Fn  | Async Strategy | Batch Size | Learning Rate | Throughput | # GPU Hour | Script |
-| ------- | -------------- | ------  | --------- | --------- | ---------- | ------------- | ---------- | ---------- | ------ |
-| SD3.5-M | Flow-GRPO-Fast     | 2  | paddle-ocr  | naive   | 8      | 1e-4          | 0.77        | >60 |[run_sd3_fast_2p_a1_r1.sh](./run_sd3_fast_2p_a1_r1.sh) with async_strategy="naive" |
-| SD3.5-M | Flow-GRPO-Fast     | 2  | paddle-ocr  | one-step-off    | 8      | 1e-4          | 1.39        | 47 |[run_sd3_fast_2p_a1_r1.sh](./run_sd3_fast_2p_a1_r1.sh) |
-| SD3.5-M | Flow-GRPO-Fast | 3  | qwenvl-ocr-vllm* | one-step-off    |  8       | 1e-4          | 1.07        | |[run_sd3_fast_3p_a1_r2.sh](./run_sd3_fast_3p_a1_r2.sh) |
-| SD3.5-M | Flow-GRPO-Fast | 3  | qwenvl-ocr-vllm* | one-step-off    |  16       | 1e-4          | 1.25        | 5| [run_sd3_fast_3p_a2_r1.sh](./run_sd3_fast_3p_a2_r1.sh) |
+| Model   | Algorithm | Hybrid Engine | # Cards |   Reward Fn  | Async Strategy | # GPUs for Actor | # GPUs for Rollout |  Batch Size | `rollout.n` | Learning Rate | # Val Samples | Throughput | # GPU Hour | Script |
+| ------- | ------- | ------- | ------  | --------- | --------- | --------- | --------- | ---------- | ------------- | ---------- | ---------- | ------ |  ------ | ------ |
+| SD3.5-M | Flow-GRPO-Fast     | False | 2  | paddle-ocr  | one-step-off    | 1 | 1 | 8      | 8 | 1e-4          | 32 | 1.39        | 47 |[run_sd3_fast_2p_a1_r1.sh](./run_sd3_fast_2p_a1_r1.sh) |
+| SD3.5-M | Flow-GRPO-Fast | False |  3  | qwenvl-ocr-vllm* | one-step-off    | 1 | 2 | 8       | 8 |  1e-4          | 32 |  1.07        | 7 |[run_sd3_fast_3p_a1_r2.sh](./run_sd3_fast_3p_a1_r2.sh) |
+| SD3.5-M | Flow-GRPO-Fast | False |  3  | qwenvl-ocr-vllm* | one-step-off    | 2 | 1 |  16       | 8 |  1e-4          | 32 |  1.25        | 5| [run_sd3_fast_3p_a2_r1.sh](./run_sd3_fast_3p_a2_r1.sh) |
+| SD3.5-M | Flow-GRPO-Fast     | True | 3  | qwenvl-ocr-vllm*  | -   | 3 | 3 | 24      | 8 |  1e-4          | 33 |          |  | - |
 
-*note: `UnifiedReward-Think-qwen3vl-32b` model was used in reward computing.
+**\*Note**: `UnifiedReward-Think-qwen3vl-32b` model was used in reward computing.
