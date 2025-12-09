@@ -84,4 +84,5 @@ class TestDiffusersActor:
         )
 
     def test_update_policy(self, mock_data: DataProto):
-        self.actor_engine.update_policy(mock_data)
+        metrics = self.actor_engine.update_policy(mock_data)
+        assert "actor/pg_loss" in metrics, "Policy gradient loss not found in metrics."

@@ -60,11 +60,14 @@ class TestDiffusersRollout:
             "cached_steps not found in meta_info."
         )
 
-    def test_update_weights(self):
-        self.rollout_engine.update_weights({})
+    @pytest.mark.asyncio
+    async def test_update_weights(self):
+        await self.rollout_engine.update_weights({})
 
-    def test_resume(self):
-        self.rollout_engine.resume()
+    @pytest.mark.asyncio
+    async def test_resume(self):
+        await self.rollout_engine.resume()
 
-    def test_release(self):
-        self.rollout_engine.release()
+    @pytest.mark.asyncio
+    async def test_release(self):
+        await self.rollout_engine.release()
