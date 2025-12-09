@@ -259,7 +259,7 @@ class DiffusersSyncRollout(BaseRollout):
         if self.model_config.lora_rank > 0:
             return self.update_lora_weights(weights)
         else:
-            raise NotImplementedError("Only LoRA weight update is supported now.")
+            return self.update_full_weights(weights)
 
     async def release(self):
         """Release rollout weights in GPU memory."""
@@ -277,6 +277,22 @@ class DiffusersSyncRollout(BaseRollout):
         from peft import set_peft_model_state_dict
 
         set_peft_model_state_dict(self.pipeline.transformer, dict(weights))
+
+    def update_full_weights(
+        self,
+        weights: Generator[tuple[str, torch.Tensor], None, None],
+    ):
+        """Update the full weights of the rollout model.
+
+        Args:
+            weights: A generator that yields the name of the weight tensor and the tensor itself.
+        """
+        state_dict = self.pipeline.transformer.state_dict()
+        for name, tensor in weights:
+            if name in state_dict:
+                state_dict[name].copy_(tensor)
+            else:
+                logger.warning(f"Parameter {name} not found in model state_dict.")
 
 
 class DiffusersAsyncRollout(DiffusersSyncRollout):
