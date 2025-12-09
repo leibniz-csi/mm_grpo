@@ -21,7 +21,7 @@ Before training, specify the paths in the configuration parameters `data.train_f
 
 2. Start Training
 
-We provide scripts for a quick start:
+We provide scripts for a quick start using a hybrid engine for coupled actor and rollout:
 
 ```bash
 # SD3 + Flow-GRPO
@@ -30,6 +30,9 @@ bash examples/flowgrpo_trainer/run_sd3.sh
 # SD3 + Flow-GRPO-Fast
 bash examples/flowgrpo_trainer/run_sd3_fast.sh
 ```
+
+## Advanced: Asynchronous Training
+We support different asynchronous training strategies, please refer to [experimental](./experimental/README.md) for more details.
 
 ## Performance
 
