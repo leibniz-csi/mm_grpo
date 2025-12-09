@@ -20,7 +20,8 @@ val_max_samples: -1
 # The field used to select the reward function (if using different ones per example).
 reward_fn_key: data_source
 
-# The data source name, default is "ocr"
+# The data source name to determine ground-truth data, default is "ocr"
+# Options: "ocr", "prompt"
 data_source: ocr
 
 # The list of reward functions used for the data.

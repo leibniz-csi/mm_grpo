@@ -15,7 +15,7 @@
 # limitations under the License.
 # ============================================================================
 
-from typing import List, Union
+from typing import Union
 
 import numpy as np
 import torch
@@ -43,9 +43,9 @@ class PaddleOCRScorer(Scorer):
     @torch.no_grad()
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: List[str],
-    ) -> List[float]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: list[str],
+    ) -> list[float]:
         """
         Calculate OCR reward
         :param images: List of input images (PIL or numpy format)
