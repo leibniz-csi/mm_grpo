@@ -14,7 +14,7 @@
 # ============================================================================
 
 import importlib
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -51,9 +51,9 @@ class MultiScorer(Scorer):
 
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: Optional[List[str]] = None,
-    ) -> Dict[str, List[float]]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: Optional[list[str]] = None,
+    ) -> Dict[str, list[float]]:
         """
         Calculate reward scores from multiples scorers
         :param images: List of input images (PIL or numpy format)

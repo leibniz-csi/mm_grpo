@@ -19,7 +19,7 @@ import logging
 import os
 import re
 from io import BytesIO
-from typing import Any, List, Optional, Union
+from typing import Optional, Union
 
 import Levenshtein
 import numpy as np
@@ -41,7 +41,7 @@ class VLLMScorer(Scorer):
 
     async def async_process_queries(
         self, queries: list[list[dict]], model_path: str, base_url: str
-    ) -> List[str]:
+    ) -> list[str]:
         results = await asyncio.gather(
             *(
                 self._async_query_openai(query, model_path, base_url)
@@ -70,9 +70,9 @@ class VLLMScorer(Scorer):
     @torch.no_grad()
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: List[str],
-    ) -> List[float]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: list[str],
+    ) -> list[float]:
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     @staticmethod
@@ -87,7 +87,7 @@ class VLLMScorer(Scorer):
 class QwenVLOCRVLLMScorer(VLLMScorer):
     """
     Calculate OCR reward via calling vllm serving VQA models, e.g. Qwen-VL, UnifiedReward models.
-    You can set enivironment variables `QWEN_VL_OCR_VLLM_URL` and `QWEN_VL_OCR_PATH` to configure the model to use,
+    You can set environment variables `QWEN_VL_OCR_VLLM_URL` and `QWEN_VL_OCR_PATH` to configure the model to use.
     """
 
     _DEFAULT_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
@@ -101,14 +101,18 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
     @torch.no_grad()
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: Optional[List[str]] = None,
-    ) -> List[float]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: Optional[list[str]] = None,
+    ) -> list[float]:
         """
-        Calculate OCR reward
-        :param images: List of input images (PIL or numpy format)
-        :param prompts: Corresponding target text list
-        :return: Reward scores
+        Calculate OCR reward.
+
+        Args:
+            images (list[Image], numpy, tensor):  List of input images
+            prompts (list[str]): Corresponding target text list
+
+        Returns:
+            list[float]: Reward scores
         """
         assert prompts is not None, "Prompts must be provided for OCR scoring."
         assert self.base_url is not None, (
@@ -131,7 +135,7 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         rewards = self.calculate_score(results, prompts)
         return rewards
 
-    def prepare_query(self, image_base64: str) -> List:
+    def prepare_query(self, image_base64: str) -> list:
         query = [
             {
                 "type": "image_url",
@@ -142,7 +146,7 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         return query
 
     @staticmethod
-    def calculate_score(output_text: List[str], prompts: List[str]) -> List[float]:
+    def calculate_score(output_text: list[str], prompts: list[str]) -> list[float]:
         scores = []
         for text, prompt in zip(output_text, prompts):
             # remove any nonvisible characters and convert to lowercase
@@ -162,7 +166,7 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
 class UnifiedRewardVLLMScorer(VLLMScorer):
     """
     Calculate image scores with captions via calling vllm serving VQA models, e.g. Qwen-VL, UnifiedReward models.
-    You can set enivironment variables `UNIFIED_REWARD_VLLM_URL` and `UNIFIED_REWARD_PATH` to configure the model to use,
+    You can set environment variables `UNIFIED_REWARD_VLLM_URL` and `UNIFIED_REWARD_PATH` to configure the model to use,
     """
 
     _DEFAULT_MODEL = "UnifiedReward"
@@ -188,14 +192,18 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
     @torch.no_grad()
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: Optional[List[str]] = None,
-    ) -> List[float]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: Optional[list[str]] = None,
+    ) -> list[float]:
         """
-        Calculate Image reward based on caption alignment and image quality
-        :param images: List of input images (PIL or numpy format)
-        :param prompts: Corresponding captions
-        :return: Reward scores
+        Calculate Image reward based on caption alignment and image quality.
+
+        Args:
+            images (list[Image], numpy, tensor):  List of input images
+            prompts (list[str]): Corresponding captions
+
+        Returns:
+            list[float]: Reward scores
         """
         assert prompts is not None, "Prompts must be provided for scoring."
         assert self.base_url is not None, "Base URL for VLLM scorer must be provided."
@@ -218,7 +226,7 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
         rewards = self.calculate_score(results)
         return rewards
 
-    def prepare_query(self, image_base64: str, prompt: str) -> List:
+    def prepare_query(self, image_base64: str, prompt: str) -> list:
         query = [
             {
                 "type": "image_url",
@@ -229,7 +237,7 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
         return query
 
     @staticmethod
-    def calculate_score(output_text: List[str]) -> List[float]:
+    def calculate_score(output_text: list[str]) -> list[float]:
         scores = []
         pattern = r"Final Score:\s*([1-5](?:\.\d+)?)"
         for text in output_text:
