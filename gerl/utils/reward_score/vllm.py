@@ -85,6 +85,11 @@ class VLLMScorer(Scorer):
 
 
 class QwenVLOCRVLLMScorer(VLLMScorer):
+    """
+    Calculate OCR reward via calling vllm serving VQA models, e.g. Qwen-VL, UnifiedReward models.
+    You can set enivironment variables `QWEN_VL_OCR_VLLM_URL` and `QWEN_VL_OCR_PATH` to configure the model to use,
+    """
+
     _DEFAULT_MODEL = "Qwen/Qwen2.5-VL-7B-Instruct"
     _task = "Please output only the text content from the image without any additional descriptions or formatting."
 
@@ -99,9 +104,15 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         images: Union[List[Image.Image], np.ndarray, torch.Tensor],
         prompts: Optional[List[str]] = None,
     ) -> List[float]:
+        """
+        Calculate OCR reward
+        :param images: List of input images (PIL or numpy format)
+        :param prompts: Corresponding target text list
+        :return: Reward scores
+        """
         assert prompts is not None, "Prompts must be provided for OCR scoring."
         assert self.base_url is not None, (
-            "Base URL for Qwen-VL OCR VLLM scorer must be provided."
+            "Base URL for OCR VLLM scorer must be provided."
         )
 
         if isinstance(images, (np.ndarray, torch.Tensor)):
@@ -149,6 +160,11 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
 
 
 class UnifiedRewardVLLMScorer(VLLMScorer):
+    """
+    Calculate image scores with captions via calling vllm serving VQA models, e.g. Qwen-VL, UnifiedReward models.
+    You can set enivironment variables `UNIFIED_REWARD_VLLM_URL` and `UNIFIED_REWARD_PATH` to configure the model to use,
+    """
+
     _DEFAULT_MODEL = "UnifiedReward"
     _task = (
         "You are given a text caption and a generated image based on that caption. "
@@ -175,10 +191,14 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
         images: Union[List[Image.Image], np.ndarray, torch.Tensor],
         prompts: Optional[List[str]] = None,
     ) -> List[float]:
+        """
+        Calculate Image reward based on caption alignment and image quality
+        :param images: List of input images (PIL or numpy format)
+        :param prompts: Corresponding captions
+        :return: Reward scores
+        """
         assert prompts is not None, "Prompts must be provided for scoring."
-        assert self.base_url is not None, (
-            "Base URL for UnifiedReward VLLM scorer must be provided."
-        )
+        assert self.base_url is not None, "Base URL for VLLM scorer must be provided."
         if isinstance(images, (np.ndarray, torch.Tensor)):
             if images.ndim == 3:
                 images = images.unsqueeze(0)
@@ -225,26 +245,8 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
         return scores
 
 
-class UnifiedRewardOCRVLLMScorer(QwenVLOCRVLLMScorer):
-    _DEFAULT_MODEL = "UnifiedReward"
-
-    def __init__(self, base_url: Optional[str] = None) -> None:
-        self.base_url = os.environ.get("UNIFIED_REWARD_VLLM_URL", base_url)
-        self.model_path = os.environ.get("UNIFIED_REWARD_PATH", self._DEFAULT_MODEL)
-        super().__init__(base_url=self.base_url)
-
-
 def test_qwen_vl_ocr_vllm_scorer():
     scorer = QwenVLOCRVLLMScorer("http://0.0.0.0:9529/v1")
-    images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
-    # original prompt: 'a photo of displaying "OCR".'
-    prompts = ["OCR"] * len(images)
-    pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images, prompts=prompts))
-
-
-def test_unified_reward_ocr_vllm_scorer():
-    scorer = UnifiedRewardOCRVLLMScorer("http://0.0.0.0:8090/v1")
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
     # original prompt: 'a photo of displaying "OCR".'
     prompts = ["OCR"] * len(images)
@@ -262,5 +264,4 @@ def test_unified_reward_vllm_scorer():
 
 if __name__ == "__main__":
     test_qwen_vl_ocr_vllm_scorer()
-    test_unified_reward_ocr_vllm_scorer()
     test_unified_reward_vllm_scorer()

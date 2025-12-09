@@ -24,7 +24,7 @@ python -m gerl.utils.reward_score.multi
 python -m gerl.utils.reward_score.ocr
 
 # put images "assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"
-# if use local server
+# if use local server:
 # CUDA_VISIBLE_DEVICES=0 vllm serve ${CHECKPOINT_HOME}/Qwen/Qwen2.5-VL-7B-Instruct --host 0.0.0.0 --port 9529
 export QWEN_VL_OCR_VLLM_URL=http://0.0.0.0:9529/v1
 export QWEN_VL_OCR_PATH=${CHECKPOINT_HOME}/Qwen/Qwen2.5-VL-7B-Instruct
