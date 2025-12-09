@@ -281,6 +281,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             # TODO (Mike): generalize to other diffusers model later
             actor_module = SD3Transformer2DModel.from_pretrained(
                 pretrained_model_name_or_path=local_path,
+                torch_dtype=torch_dtype,
                 subfolder="transformer",
             )
 
@@ -877,9 +878,17 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             )
             return data
         assert self._is_ref
-        raise NotImplementedError(
-            "Ref worker log_prob computation is not implemented yet"
-        )
+        micro_batch_size = self.config.ref.log_prob_micro_batch_size_per_gpu
+        data.meta_info["micro_batch_size"] = micro_batch_size
+
+        data = data.to(
+            "cpu"
+        )  # data will to device with each micro batch on ref.compute_log_prob
+        _, output = self.ref_policy.compute_log_prob(data=data)
+        output = DataProto.from_dict(tensors={"ref_prev_sample_mean": output})
+
+        output = output.to("cpu")
+        return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, global_step=0, max_ckpt_to_keep=None):
