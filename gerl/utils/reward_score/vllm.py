@@ -26,6 +26,7 @@ import numpy as np
 import torch
 from openai import AsyncOpenAI
 from PIL import Image
+from verl.utils.ray_utils import get_event_loop
 
 from .scorer import Scorer
 
@@ -34,9 +35,6 @@ logger = logging.getLogger(__name__)
 
 class VLLMScorer(Scorer):
     def __init__(self, base_url: Optional[str] = None) -> None:
-        # following https://github.com/openai/openai-python/issues/1254
-        # we should use a single event loop for AsyncOpenAI call
-        self._loop = asyncio.new_event_loop()
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
 
     async def async_process_queries(
@@ -127,7 +125,7 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         images_base64 = [self.pil_image_to_base64(image) for image in images]
         queries = [self.prepare_query(image_base64) for image_base64 in images_base64]
 
-        results = self._loop.run_until_complete(
+        results = get_event_loop().run_until_complete(
             self.async_process_queries(queries, self.model_path, self.base_url)
         )
         logger.debug("VLLM output: %s", results)
@@ -218,7 +216,7 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
             for image_base64, prompt in zip(images_base64, prompts)
         ]
 
-        results = self._loop.run_until_complete(
+        results = get_event_loop().run_until_complete(
             self.async_process_queries(queries, self.model_path, self.base_url)
         )
         logger.debug("VLLM output: %s", results)
