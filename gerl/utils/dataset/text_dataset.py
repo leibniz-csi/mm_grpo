@@ -90,6 +90,8 @@ class TextPromptDataset(Dataset):
         if data_source == "ocr":
             ground_truth = prompt.split('"')[1]
             return ground_truth
+        elif data_source == "prompt":
+            return prompt
         else:
             return None
 

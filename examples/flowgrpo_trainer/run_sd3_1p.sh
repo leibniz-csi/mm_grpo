@@ -20,10 +20,10 @@ python3 -m gerl.trainer.main_flowgrpo \
     actor_rollout_ref.actor.kl_loss_coef=0.04 \
     actor_rollout_ref.actor.fsdp_config.param_offload=False \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=False \
-    actor_rollout_ref.actor.fsdp_config.model_dtype=float16 \
     actor_rollout_ref.actor.fsdp_config.dtype=float16 \
     actor_rollout_ref.actor.fsdp_config.fsdp_size=1 \
     actor_rollout_ref.actor.policy_loss.loss_mode=flow_grpo \
+    actor_rollout_ref.ref.fsdp_config.dtype=float16 \
     actor_rollout_ref.rollout.name=diffusers \
     actor_rollout_ref.rollout.n=8 \
     actor_rollout_ref.rollout.guidance_scale=4.5 \
