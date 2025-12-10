@@ -16,14 +16,20 @@
 import pytest
 
 # Assuming REWARD_MANAGER_REGISTRY is defined somewhere in the module
-from gerl.workers.reward_manager.registry import REWARD_MANAGER_REGISTRY, get_reward_manager_cls, register
+from gerl.workers.reward_manager.registry import (
+    REWARD_MANAGER_REGISTRY,
+    get_reward_manager_cls,
+    register,
+)
 
 
 @pytest.fixture
 def setup():
     """Setup test cases with a mock registry."""
     REWARD_MANAGER_REGISTRY.clear()
-    REWARD_MANAGER_REGISTRY.update({"manager1": "Manager1Class", "manager2": "Manager2Class"})
+    REWARD_MANAGER_REGISTRY.update(
+        {"manager1": "Manager1Class", "manager2": "Manager2Class"}
+    )
     return REWARD_MANAGER_REGISTRY
 
 

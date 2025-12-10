@@ -13,33 +13,51 @@
 # limitations under the License.
 # ============================================================================
 
-import pytest
 import numpy as np
+import pytest
 import torch
+from tensordict import Tensordict
 
 from gerl.protocol import DataProto
-from gerl.workers.reward_manager.diffusion import DiffusionRewardManager, DiffusionBatchRewardManager
+from gerl.workers.reward_manager.diffusion import (
+    DiffusionBatchRewardManager,
+    DiffusionRewardManager,
+)
+
 
 @pytest.fixture
 def mock_data() -> DataProto:
+    batch_size = 3
     test_prompt = "a photo of a cat"
-    response = np.random.randn(1, 3, 64, 64)  # Example image tensor
+    responses = np.random.randn(batch_size, 3, 64, 64)  # Example image tensor
     data = DataProto(
-        batch={"responses": response},
+        batch=Tensordict(
+            {"responses": responses},
+            batch_size=batch_size,
+        ),
         non_tensor_batch={
-            "prompt": np.array([test_prompt]),
-            "reward_model": {
-                "ground_truth": test_prompt,
-            },
-            "data_source": "ocr", # Use CPU reward for testing
+            "prompt": np.array([test_prompt] * batch_size),
+            "reward_model": np.array(
+                [
+                    {
+                        "ground_truth": test_prompt,
+                    },
+                ]
+                * batch_size
+            ),
+            "data_source": np.array(["ocr"] * batch_size),  # Use CPU reward for testing
         },
     )
     return data
 
 
-class TestDiffusionRewardManager():
+class TestDiffusionRewardManager:
     def setup_class(self):
-        self.reward_manager = DiffusionRewardManager(None, 1, None, )
+        self.reward_manager = DiffusionRewardManager(
+            None,
+            1,
+            None,
+        )
 
     def test_call(self, mock_data: DataProto):
         # test return dict result
@@ -50,19 +68,28 @@ class TestDiffusionRewardManager():
 
         # test return tensor result
         tensor_result = self.reward_manager(mock_data, return_dict=False)
-        assert isinstance(tensor_result, torch.tensor), "Tensor result is not a torch.Tensor."
-        assert tensor_result.shape == (len(mock_data.batch["response"]), ), (
-            f"Expected tensor shape {(len(mock_data.batch['response'],),)}, got {tensor_result.shape}."
+        assert isinstance(tensor_result, torch.Tensor), (
+            "Tensor result is not a torch.Tensor."
+        )
+        assert tensor_result.shape == (len(mock_data.batch["responses"]),), (
+            f"Expected tensor shape {(len(mock_data.batch['responses']),)}, got {tensor_result.shape}."
         )
 
         # test NotImplementedError for unsupported rm_scores
-        mock_data.batch["rm_scores"] = torch.tensor([1.0])
+        mock_data.batch["rm_scores"] = torch.tensor(
+            [1.0] * len(mock_data.batch["responses"])
+        )
         with pytest.raises(NotImplementedError):
             self.reward_manager(mock_data)
 
-class TestDiffusionBatchRewardManager():
+
+class TestDiffusionBatchRewardManager:
     def setup_class(self):
-        self.reward_manager = DiffusionBatchRewardManager(None, 1, None, )
+        self.reward_manager = DiffusionBatchRewardManager(
+            None,
+            1,
+            None,
+        )
 
     def test_call(self, mock_data: DataProto):
         # test return dict result
@@ -73,12 +100,16 @@ class TestDiffusionBatchRewardManager():
 
         # test return tensor result
         tensor_result = self.reward_manager(mock_data, return_dict=False)
-        assert isinstance(tensor_result, torch.tensor), "Tensor result is not a torch.Tensor."
-        assert tensor_result.shape == (len(mock_data.batch["response"]), ), (
-            f"Expected tensor shape {(len(mock_data.batch['response'],),)}, got {tensor_result.shape}."
+        assert isinstance(tensor_result, torch.Tensor), (
+            "Tensor result is not a torch.Tensor."
+        )
+        assert tensor_result.shape == (len(mock_data.batch["responses"]),), (
+            f"Expected tensor shape {(len(mock_data.batch['responses']),)}, got {tensor_result.shape}."
         )
 
         # test NotImplementedError for unsupported rm_scores
-        mock_data.batch["rm_scores"] = torch.tensor([1.0])
+        mock_data.batch["rm_scores"] = torch.tensor(
+            [1.0] * len(mock_data.batch["responses"])
+        )
         with pytest.raises(NotImplementedError):
             self.reward_manager(mock_data)
