@@ -16,7 +16,7 @@
 import numpy as np
 import pytest
 import torch
-from tensordict import Tensordict
+from tensordict import TensorDict
 
 from gerl.protocol import DataProto
 from gerl.workers.reward_manager.diffusion import (
@@ -31,7 +31,7 @@ def mock_data() -> DataProto:
     test_prompt = "a photo of a cat"
     responses = np.random.randn(batch_size, 3, 64, 64)  # Example image tensor
     data = DataProto(
-        batch=Tensordict(
+        batch=TensorDict(
             {"responses": responses},
             batch_size=batch_size,
         ),
