@@ -51,6 +51,23 @@ If you want to submit a pull request to our repository, here are steps to set up
 
 7. Submit a pull request through the GitHub website.
 
+## Testing
+
+Currently, we use local unit tests to ensure code quality.
+To install the testing dependencies, run:
+
+```bash
+pip install pytest pytest-cov pytest-asyncio
+```
+
+To run the tests, execute:
+
+```bash
+python3 -m pytest --cov=gerl/workers tests/workers
+```
+
+If you make changes to the codebase, please ensure that you add or update the corresponding tests to cover your modifications.
+
 
 ## Pull Requests Guidelines
 
