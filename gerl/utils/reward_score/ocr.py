@@ -105,19 +105,3 @@ def compute_score(images, prompts):
     scores = scorer(images, prompts)
 
     return scores
-
-
-def run_paddle_ocr_scorer():
-    example_image_path = "assets/generated_nyc.jpg"
-    example_image = Image.open(example_image_path)
-    # original prompt: 'New York Skyline with "Hello World" written with fireworks on the sky'
-    example_prompt = "Hello World"
-    # Instantiate scorer
-    scorer = PaddleOCRScorer(use_gpu=False)
-    # Call scorer and print result
-    reward = scorer([example_image], [example_prompt])
-    print(f"OCR Reward: {reward}")
-
-
-if __name__ == "__main__":
-    run_paddle_ocr_scorer()
