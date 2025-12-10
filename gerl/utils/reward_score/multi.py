@@ -89,7 +89,7 @@ def compute_score(images, prompts, scorers: Dict[str, float]):
     return scores
 
 
-def test_multi_scorer():
+def run_multi_scorer():
     scorers = {"jpeg-imcompressibility": 1.0}
     scorer = MultiScorer(scorers)
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg"]
@@ -98,4 +98,4 @@ def test_multi_scorer():
 
 
 if __name__ == "__main__":
-    test_multi_scorer()
+    run_multi_scorer()

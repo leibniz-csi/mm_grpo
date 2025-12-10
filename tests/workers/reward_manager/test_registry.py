@@ -94,7 +94,7 @@ def test_decorator_returns_original_class(setup):
 
     @register("return_test")
     class OriginalClass:
-        def method(setup):
+        def method(self):
             return 42
 
     assert OriginalClass().method() == 42

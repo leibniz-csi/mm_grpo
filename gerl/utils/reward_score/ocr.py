@@ -107,7 +107,7 @@ def compute_score(images, prompts):
     return scores
 
 
-def test_paddle_ocr_scorer():
+def run_paddle_ocr_scorer():
     example_image_path = "assets/generated_nyc.jpg"
     example_image = Image.open(example_image_path)
     # original prompt: 'New York Skyline with "Hello World" written with fireworks on the sky'
@@ -120,4 +120,4 @@ def test_paddle_ocr_scorer():
 
 
 if __name__ == "__main__":
-    test_paddle_ocr_scorer()
+    run_paddle_ocr_scorer()

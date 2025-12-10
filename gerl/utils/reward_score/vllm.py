@@ -253,7 +253,7 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
         return scores
 
 
-def test_qwen_vl_ocr_vllm_scorer():
+def run_qwen_vl_ocr_vllm_scorer():
     scorer = QwenVLOCRVLLMScorer("http://0.0.0.0:9529/v1")
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
     # original prompt: 'a photo of displaying "OCR".'
@@ -262,7 +262,7 @@ def test_qwen_vl_ocr_vllm_scorer():
     print(scorer(images=pil_images, prompts=prompts))
 
 
-def test_unified_reward_vllm_scorer():
+def run_unified_reward_vllm_scorer():
     scorer = UnifiedRewardVLLMScorer("http://0.0.0.0:8090/v1")
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg"]
     prompts = ["a photo of apple."] * len(images)
@@ -271,5 +271,5 @@ def test_unified_reward_vllm_scorer():
 
 
 if __name__ == "__main__":
-    test_qwen_vl_ocr_vllm_scorer()
-    test_unified_reward_vllm_scorer()
+    run_qwen_vl_ocr_vllm_scorer()
+    run_unified_reward_vllm_scorer()
