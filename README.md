@@ -14,6 +14,10 @@ A fast and easy-to-use library to support RL training for multi-modal generative
 - [ ] [Mix-GRPO](https://arxiv.org/html/2507.21802v1) (coming soon)
 - [ ] [DiffusionNFT](https://arxiv.org/abs/2509.16117) (coming soon)
 
+### Supported Async Strategies
+- [x] Async Reward Computation during Rollout
+- [x] [One-Step-Off Async Policy](https://arxiv.org/abs/2410.18252)
+
 ### Supported Models
 
 - [x] [Stable-Diffusion-3.5](https://arxiv.org/abs/2403.03206)
