@@ -86,9 +86,9 @@ actor_rollout_ref.async_strategy="one-step-off"
 
 | Model   | Algorithm | Hybrid Engine | # Cards |   Reward Fn  | Async Strategy | # GPUs for Actor | # GPUs for Rollout |  Batch Size | `rollout.n` | Learning Rate | # Val Samples | Throughput | # GPU Hour | Script |
 | ------- | ------- | ------- | ------  | --------- | --------- | --------- | --------- | ---------- | ------------- | ---------- | ---------- | ------ |  ------ | ------ |
-| SD3.5-M | Flow-GRPO-Fast | False |  3  | qwenvl-ocr-vllm* | one-step-off    | 1 | 2 | 8       | 8 |  1e-4          | 32 |  1.07        | 0.68 |[run_sd3_fast_3p_a1_r2.sh](./run_sd3_fast_3p_a1_r2.sh) |
-| SD3.5-M | Flow-GRPO-Fast | False |  3  | qwenvl-ocr-vllm* | one-step-off    | 2 | 1 |  16       | 8 |  1e-4          | 32 |  1.25        | 1.13| [run_sd3_fast_3p_a2_r1.sh](./run_sd3_fast_3p_a2_r1.sh) |
-| SD3.5-M | Flow-GRPO-Fast     | True | 3  | qwenvl-ocr-vllm*  | -   | 3 | 3 | 24      | 8 |  1e-4          | 33 |    1.42      | 1.02 | - |
+| SD3.5-M | Flow-GRPO-Fast | False |  3  | qwenvl-ocr-vllm* | one-step-off    | 1 | 2 | 8       | 8 |  1e-4          | 32 |  3.21        | 0.68 |[run_sd3_fast_3p_a1_r2.sh](./run_sd3_fast_3p_a1_r2.sh) |
+| SD3.5-M | Flow-GRPO-Fast | False |  3  | qwenvl-ocr-vllm* | one-step-off    | 2 | 1 |  16       | 8 |  1e-4          | 32 |  3.75        | 1.13| [run_sd3_fast_3p_a2_r1.sh](./run_sd3_fast_3p_a2_r1.sh) |
+| SD3.5-M | Flow-GRPO-Fast     | True | 3  | qwenvl-ocr-vllm*  | -   | 3 | 3 | 24      | 8 |  1e-4          | 33 |    1.42      | 3.06 | - |
 
 
 **\*Note**: `UnifiedReward-Think-qwen3vl-32b` model was used in reward computing.
