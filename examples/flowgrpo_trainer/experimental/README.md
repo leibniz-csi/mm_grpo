@@ -81,7 +81,7 @@ actor_rollout_ref.async_strategy="one-step-off"
 
 > All experiments were conducted on *NVIDIA H800* GPUs using the OCR reward.
 
-Training GPU hours required to reach and maintain a validation reward score of approximately 0.8:
+- Training GPU hours required to reach and maintain a validation reward score of approximately 0.8:
 
 
 | Model   | Algorithm | Hybrid Engine | # Cards |   Reward Fn  | Async Strategy | # GPUs for Actor | # GPUs for Rollout |  Batch Size | `rollout.n` | Learning Rate | # Val Samples | Throughput | # GPU Hour | Script |
@@ -90,4 +90,11 @@ Training GPU hours required to reach and maintain a validation reward score of a
 | SD3.5-M | Flow-GRPO-Fast | False |  3  | qwenvl-ocr-vllm* | one-step-off    | 2 | 1 |  16       | 8 |  1e-4          | 32 |  1.25        | 1.13| [run_sd3_fast_3p_a2_r1.sh](./run_sd3_fast_3p_a2_r1.sh) |
 | SD3.5-M | Flow-GRPO-Fast     | True | 3  | qwenvl-ocr-vllm*  | -   | 3 | 3 | 24      | 8 |  1e-4          | 33 |    1.42      | 1.02 | - |
 
+
 **\*Note**: `UnifiedReward-Think-qwen3vl-32b` model was used in reward computing.
+
+- Validation reward curve：
+
+<center>
+<img width="800" alt="3p_comparison" src="https://github.com/user-attachments/assets/a9630a75-5cbf-48fe-996c-6c66a0b5f8be" />
+</center>
