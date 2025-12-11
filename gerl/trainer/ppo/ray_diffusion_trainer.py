@@ -599,7 +599,10 @@ class RayDiffusionPPOTrainer:
             )
             self.resource_pool_to_cls[resource_pool][str(Role.RewardModel)] = rm_cls
             self.rm_wg = None
-        elif self.config.reward_model.launch_reward_fn_async:
+        elif (
+            self.config.actor_rollout_ref.rollout.with_reward
+            or self.config.reward_model.launch_reward_fn_async
+        ):
             self.rm_wg = CPURewardWorker.remote(self.config, reward_fn=self.reward_fn)
             self.val_rm_wg = CPURewardWorker.remote(
                 self.config, reward_fn=self.val_reward_fn
@@ -956,7 +959,7 @@ class RayDiffusionPPOTrainer:
                                 raise NotImplementedError  # TODO： reward model worker
 
                             if self.config.reward_model.launch_reward_fn_async:
-                                future_reward = self.rm_wg.compute_reward_async.remote(
+                                future_reward = self.rm_wg.compute_reward.remote(
                                     data=batch,
                                     config=self.config,
                                 )
