@@ -39,6 +39,11 @@ class VLLMScorer(Scorer):
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
         self._executor = ThreadPoolExecutor(max_workers=4)
 
+    def __del__(self):
+        # Properly shut down the ThreadPoolExecutor to avoid resource leaks
+        executor = getattr(self, "_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=True)
     async def async_process_queries(
         self, queries: list[list[dict]], model_path: str, base_url: str
     ) -> list[str]:
