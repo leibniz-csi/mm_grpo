@@ -251,25 +251,3 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
                 scores.append(0.0)
         scores = [max(0, min(1, score)) for score in scores]
         return scores
-
-
-def test_qwen_vl_ocr_vllm_scorer():
-    scorer = QwenVLOCRVLLMScorer("http://0.0.0.0:9529/v1")
-    images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
-    # original prompt: 'a photo of displaying "OCR".'
-    prompts = ["OCR"] * len(images)
-    pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images, prompts=prompts))
-
-
-def test_unified_reward_vllm_scorer():
-    scorer = UnifiedRewardVLLMScorer("http://0.0.0.0:8090/v1")
-    images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg"]
-    prompts = ["a photo of apple."] * len(images)
-    pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images, prompts=prompts))
-
-
-if __name__ == "__main__":
-    test_qwen_vl_ocr_vllm_scorer()
-    test_unified_reward_vllm_scorer()
