@@ -104,7 +104,7 @@ actor_rollout_ref.async_strategy="one-step-off"
 <div align="center">
 <img width="600" alt="3p_comparison" src="https://github.com/user-attachments/assets/a9630a75-5cbf-48fe-996c-6c66a0b5f8be" />
 <br>
-sd35_m_ocr_fast_3p_hybrird: hybrid engine with 3 GPUs; 
+sd35_m_ocr_fast_3p_hybrid: hybrid engine with 3 GPUs; 
 <br>
 sd35_m_ocr_fast_3p_a1_r2: one-step-off async with 1 GPU for actor and 2 GPUs for rollout; 
 <br>
