@@ -76,6 +76,7 @@ class VLLMScorer(Scorer):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
     async def pil_image_to_base64(self, image: Image.Image) -> str:
+        # To avoid blocking the event loop, run the conversion in a thread pool
         base64_image = await get_event_loop().run_in_executor(
             self._executor, self._pil_image_to_base64, image
         )
