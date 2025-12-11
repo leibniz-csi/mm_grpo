@@ -14,7 +14,7 @@
 # ============================================================================
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 import torch
@@ -23,11 +23,11 @@ from PIL import Image
 
 class Scorer(ABC):
     @abstractmethod
-    def __call__(
+    async def __call__(
         self,
         images: Union[list[Image.Image], np.ndarray, torch.Tensor],
         prompts: Optional[list[str]] = None,
-    ) -> Union[list[float], Dict[str, list[float]]]:
+    ):
         """Return the scoring value of the images"""
         pass
 
