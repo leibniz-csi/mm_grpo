@@ -209,3 +209,27 @@ def compute_reward_async(data: DataProto, config=None, tokenizer=None, reward_fn
         )
 
     return compute_reward(data, reward_fn)
+
+
+@ray.remote(num_cpus=1)
+class CPURewardWorker:
+    """
+    A lightweight Ray actor that computes rewards using a reward manager.
+    Typically used for remote API calls.
+    """
+
+    def __init__(
+        self, config: DictConfig, tokenizer: Any = None, reward_fn: Any = None
+    ):
+        if reward_fn is None:
+            self.reward_fn = load_reward_manager(
+                config,
+                tokenizer,
+                num_examine=0,
+                **config.reward_model.get("reward_kwargs", {}),
+            )
+        else:
+            self.reward_fn = reward_fn
+
+    def compute_reward(self, data: DataProto):
+        return compute_reward(data, self.reward_fn)

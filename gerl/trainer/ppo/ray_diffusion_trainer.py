@@ -59,7 +59,7 @@ from .metric_utils import (
     compute_diffusion_throughout_metrics,
     compute_diffusion_timing_metrics,
 )
-from .reward import compute_reward, compute_reward_async
+from .reward import CPURewardWorker, compute_reward
 
 
 def compute_advantage(
@@ -598,6 +598,14 @@ class RayDiffusionPPOTrainer:
                 config=self.config.reward_model,
             )
             self.resource_pool_to_cls[resource_pool][str(Role.RewardModel)] = rm_cls
+            self.rm_wg = None
+        elif self.config.reward_model.launch_reward_fn_async:
+            self.rm_wg = CPURewardWorker.remote(self.config, reward_fn=self.reward_fn)
+            self.val_rm_wg = CPURewardWorker.remote(
+                self.config, reward_fn=self.val_reward_fn
+            )
+            self.reward_fn = self.rm_wg.compute_reward
+            self.val_reward_fn = self.val_rm_wg.compute_reward
 
         # initialize WorkerGroup
         # NOTE: if you want to use a different resource pool for each role, which can support different parallel size,
@@ -655,7 +663,6 @@ class RayDiffusionPPOTrainer:
                 assert str(Role.ActorRolloutRef) in all_wg, f"{all_wg.keys()=}"
                 self.ref_policy_wg = all_wg[str(Role.ActorRolloutRef)]
 
-        self.rm_wg = None
         # initalization of rm_wg will be deprecated in the future
         if self.use_rm:
             self.rm_wg = all_wg[str(Role.RewardModel)]
@@ -949,7 +956,7 @@ class RayDiffusionPPOTrainer:
                                 raise NotImplementedError  # TODO： reward model worker
 
                             if self.config.reward_model.launch_reward_fn_async:
-                                future_reward = compute_reward_async.remote(
+                                future_reward = self.rm_wg.compute_reward_async.remote(
                                     data=batch,
                                     config=self.config,
                                 )
