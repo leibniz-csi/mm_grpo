@@ -15,10 +15,13 @@
 
 """
 This script demonstrates how to use various reward scorers.
+Please refer to testing script `./run_reward_fns.sh` for server setup details.
 """
 
 from PIL import Image
+
 from gerl.utils.reward_score import multi, ocr, vllm
+
 
 def run_multi_scorer():
     scorers = {"paddle-ocr": 1.0}
@@ -30,12 +33,14 @@ def run_multi_scorer():
     # Call scorer and print result
     print(scorer(images=pil_images, prompts=prompts))
 
+
 def run_paddle_ocr_scorer():
     example_image_path = "assets/ocr.jpg"
     example_image = Image.open(example_image_path)
     example_prompt = "OCR"
     scorer = ocr.PaddleOCRScorer(use_gpu=False)
     print(scorer([example_image], [example_prompt]))
+
 
 def run_qwen_vl_ocr_vllm_scorer():
     scorer = vllm.QwenVLOCRVLLMScorer("http://0.0.0.0:9529/v1")
