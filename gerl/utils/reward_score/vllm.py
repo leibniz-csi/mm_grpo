@@ -26,6 +26,7 @@ import numpy as np
 import torch
 from openai import AsyncOpenAI
 from PIL import Image
+from verl.utils.ray_utils import get_event_loop
 
 from .scorer import Scorer
 
@@ -34,9 +35,6 @@ logger = logging.getLogger(__name__)
 
 class VLLMScorer(Scorer):
     def __init__(self, base_url: Optional[str] = None) -> None:
-        # following https://github.com/openai/openai-python/issues/1254
-        # we should use a single event loop for AsyncOpenAI call
-        self._loop = asyncio.new_event_loop()
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
 
     async def async_process_queries(
@@ -127,7 +125,7 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         images_base64 = [self.pil_image_to_base64(image) for image in images]
         queries = [self.prepare_query(image_base64) for image_base64 in images_base64]
 
-        results = self._loop.run_until_complete(
+        results = get_event_loop().run_until_complete(
             self.async_process_queries(queries, self.model_path, self.base_url)
         )
         logger.debug("VLLM output: %s", results)
@@ -218,7 +216,7 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
             for image_base64, prompt in zip(images_base64, prompts)
         ]
 
-        results = self._loop.run_until_complete(
+        results = get_event_loop().run_until_complete(
             self.async_process_queries(queries, self.model_path, self.base_url)
         )
         logger.debug("VLLM output: %s", results)
@@ -251,25 +249,3 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
                 scores.append(0.0)
         scores = [max(0, min(1, score)) for score in scores]
         return scores
-
-
-def test_qwen_vl_ocr_vllm_scorer():
-    scorer = QwenVLOCRVLLMScorer("http://0.0.0.0:9529/v1")
-    images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
-    # original prompt: 'a photo of displaying "OCR".'
-    prompts = ["OCR"] * len(images)
-    pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images, prompts=prompts))
-
-
-def test_unified_reward_vllm_scorer():
-    scorer = UnifiedRewardVLLMScorer("http://0.0.0.0:8090/v1")
-    images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg"]
-    prompts = ["a photo of apple."] * len(images)
-    pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images, prompts=prompts))
-
-
-if __name__ == "__main__":
-    test_qwen_vl_ocr_vllm_scorer()
-    test_unified_reward_vllm_scorer()

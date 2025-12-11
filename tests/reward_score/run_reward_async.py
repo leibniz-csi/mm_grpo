@@ -41,7 +41,7 @@ def compute_reward_async(delay):
     return finish_msg
 
 
-def test_compute_reward_async():
+def run_compute_reward_async():
     ray.init(include_dashboard=False)
 
     # Test asynchronous reward computation
@@ -80,4 +80,4 @@ def test_compute_reward_async():
 
 
 if __name__ == "__main__":
-    test_compute_reward_async()
+    run_compute_reward_async()

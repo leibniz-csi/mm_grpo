@@ -16,15 +16,9 @@
 """
 This script tests different reward scorers
 """
-
 # put images "assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"
-python -m gerl.utils.reward_score.multi
 
-# put an image "assets/generated_nyc.jpg" aligned/misaligned with prompt "New York Skyline with "Hello World" written with fireworks on the sky"
-python -m gerl.utils.reward_score.ocr
-
-# put images "assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"
-# if use local server:
+# if use local vllm server:
 # CUDA_VISIBLE_DEVICES=0 vllm serve ${CHECKPOINT_HOME}/Qwen/Qwen2.5-VL-7B-Instruct --host 0.0.0.0 --port 9529
 export QWEN_VL_OCR_VLLM_URL=http://0.0.0.0:9529/v1
 export QWEN_VL_OCR_PATH=${CHECKPOINT_HOME}/Qwen/Qwen2.5-VL-7B-Instruct
@@ -39,4 +33,5 @@ export QWEN_VL_OCR_PATH=${CHECKPOINT_HOME}/Qwen/Qwen2.5-VL-7B-Instruct
 #     --port 8090
 export UNIFIED_REWARD_VLLM_URL=http://0.0.0.0:8090/v1
 export UNIFIED_REWARD_PATH=UnifiedReward
-python -m gerl.utils.reward_score.vllm
+
+python -m tests.reward_score.run_reward_fns
