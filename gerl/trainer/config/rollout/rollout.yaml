@@ -7,6 +7,12 @@ name: ???
 # sync: LLM, async: AsyncLLM
 mode: sync
 
+# Number of nodes for rollout. (For standalone mode only.)
+nnodes: ${oc.select:trainer.nnodes,0}
+
+# Number of GPUs per node for rollout. (For standalone mode only.)
+n_gpus_per_node: 0
+
 # generate result with reward compute (asynchrously if applicable)
 with_reward: True
 

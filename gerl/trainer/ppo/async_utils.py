@@ -12,6 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ============================================================================
-"""
-Tests for the PPO trainer module.
-"""
+from verl.single_controller.ray import RayWorkerGroup
+
+
+def update_weights(actor_wg: RayWorkerGroup, rollout_wg: RayWorkerGroup):
+    """Update weights from actor worker group to rollout worker group."""
+    if actor_wg is rollout_wg:
+        return
+
+    per_tensor_param, peft_config = actor_wg.get_params()
+    rollout_wg.update_weights(per_tensor_param, peft_config=peft_config)

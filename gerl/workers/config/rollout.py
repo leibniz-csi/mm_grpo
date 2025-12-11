@@ -34,6 +34,8 @@ class SamplingConfig(BaseConfig):
 class DiffusionRolloutConfig(BaseConfig):
     name: Optional[str] = MISSING
     mode: str = "sync"
+    nnodes: int = 0
+    n_gpus_per_node: int = 0
     with_reward: bool = True
 
     prompt_length: int = 128

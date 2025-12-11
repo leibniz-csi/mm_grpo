@@ -14,7 +14,7 @@
 # ============================================================================
 
 import importlib
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -26,12 +26,12 @@ AVAILABLE_SCORERS = {
     "paddle-ocr": ("ocr", "PaddleOCRScorer"),
     # "jpeg-imcompressibility": ("jpeg_imcompressibility", "JpegImcompressibilityScorer"),
     "qwenvl-ocr-vllm": ("vllm", "QwenVLOCRVLLMScorer"),
+    "unified-reward-vllm": ("vllm", "UnifiedRewardVLLMScorer"),
     # "pickscore": ("pickscore", "PickScoreScorer"),
     # "qwenvl": ("qwenvl", "QwenVLScorer"),
     # "aesthetic": ("aesthetic", "AestheticScorer"),
     # "jpeg-compressibility": ("compression", "JpegCompressibilityScorer"),
     # "qwenvl-vllm": ("vllm", "QwenVLVLLMScorer"),
-    # "unified-reward-vllm": ("vllm", "UnifiedRewardVLLMScorer"),
 }
 
 
@@ -51,9 +51,9 @@ class MultiScorer(Scorer):
 
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: Optional[List[str]] = None,
-    ) -> Dict[str, List[float]]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: Optional[list[str]] = None,
+    ) -> Dict[str, list[float]]:
         """
         Calculate reward scores from multiples scorers
         :param images: List of input images (PIL or numpy format)
@@ -87,15 +87,3 @@ def compute_score(images, prompts, scorers: Dict[str, float]):
     scores = scorer(images, prompts)
 
     return scores
-
-
-def test_multi_scorer():
-    scorers = {"jpeg-imcompressibility": 1.0}
-    scorer = MultiScorer(scorers)
-    images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg"]
-    pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images))
-
-
-if __name__ == "__main__":
-    test_multi_scorer()

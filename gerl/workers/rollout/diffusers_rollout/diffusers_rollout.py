@@ -191,14 +191,11 @@ class DiffusersSyncRollout(BaseRollout):
             )
             # launch async micro_batch reward computing
             if self.config.with_reward:
-                micro_batch.batch = TensorDict(
-                    {
-                        "responses": output.images,
-                    },
-                    batch_size=len(output.images),
-                )
                 future_reward = compute_reward_async.remote(
-                    data=micro_batch,
+                    data=DataProto(
+                        batch=result.select("responses"),
+                        non_tensor_batch=micro_batch.non_tensor_batch,
+                    ),
                     reward_fn=reward_fn,
                 )
                 future_rewards.append(future_reward)
@@ -217,8 +214,7 @@ class DiffusersSyncRollout(BaseRollout):
             timing_reward: dict[str, float] = {}
             with simple_timer("reward", timing_reward):
                 # concatenate reward result batches
-                for future in future_rewards:
-                    reward_tensor, reward_extra_infos_dict = ray.get(future)
+                for reward_tensor, reward_extra_infos_dict in ray.get(future_rewards):
                     reward_tensors.append(reward_tensor)
                     for k, v in reward_extra_infos_dict.items():
                         reward_extra_infos_dicts[k].extend(v)
@@ -263,7 +259,7 @@ class DiffusersSyncRollout(BaseRollout):
         if self.model_config.lora_rank > 0:
             return self.update_lora_weights(weights)
         else:
-            raise NotImplementedError("Only LoRA weight update is supported now.")
+            return self.update_full_weights(weights)
 
     async def release(self):
         """Release rollout weights in GPU memory."""
@@ -282,8 +278,27 @@ class DiffusersSyncRollout(BaseRollout):
 
         set_peft_model_state_dict(self.pipeline.transformer, dict(weights))
 
+    def update_full_weights(
+        self,
+        weights: Generator[tuple[str, torch.Tensor], None, None],
+    ):
+        """Update the full weights of the rollout model.
+
+        Args:
+            weights: A generator that yields the name of the weight tensor and the tensor itself.
+        """
+        state_dict = self.pipeline.transformer.state_dict()
+        for name, tensor in weights:
+            if name in state_dict:
+                state_dict[name].copy_(tensor)
+            else:
+                logger.warning(f"Parameter {name} not found in model state_dict.")
+
 
 class DiffusersAsyncRollout(DiffusersSyncRollout):
-    def __init__(self, config, model_config, device_mesh):
-        super().__init__(config, model_config, device_mesh)
-        raise NotImplementedError("DiffusersAsyncRollout is not implemented yet.")
+    """
+    Async rollout currently shares the same implementation as DiffusersSyncRollout.
+    This class exists for future extension; a full async implementation may be added later.
+    """
+
+    ...

@@ -31,15 +31,11 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 from safetensors.torch import save_file
 from torch.distributed.device_mesh import init_device_mesh
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
-from torch.distributed.fsdp.api import (
-    FullStateDictConfig,
-    ShardedStateDictConfig,
-    StateDictType,
-)
 from torch.distributed.tensor import DTensor
 from verl.single_controller.base import Worker
 from verl.single_controller.base.decorator import (
     Dispatch,
+    Execute,
     make_nd_compute_dataproto_dispatch_fn,
     register,
 )
@@ -264,8 +260,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         from verl.utils.model import print_model_size
         from verl.utils.torch_dtypes import PrecisionType
 
-        from .diffusers_model.schedulers import FlowMatchSDEDiscreteScheduler
-
         assert role in ["actor", "ref"]
 
         log_gpu_memory_usage(f"Before init {role} from Diffusers", logger=logger)
@@ -287,14 +281,11 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             # TODO (Mike): generalize to other diffusers model later
             actor_module = SD3Transformer2DModel.from_pretrained(
                 pretrained_model_name_or_path=local_path,
+                torch_dtype=torch_dtype,
                 subfolder="transformer",
             )
 
             actor_module.requires_grad_(not self._is_lora)
-
-            scheduler = FlowMatchSDEDiscreteScheduler.from_pretrained(
-                pretrained_model_name_or_path=local_path, subfolder="scheduler"
-            )
 
             if use_fused_kernels:
                 actor_module.fuse_qkv_projections()
@@ -496,7 +487,16 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             actor_optimizer = None
             actor_lr_scheduler = None
 
-        return actor_module_fsdp, actor_optimizer, actor_lr_scheduler, scheduler
+        return actor_module_fsdp, actor_optimizer, actor_lr_scheduler
+
+    def _build_scheduler(self, model_path):
+        # TODO (Mike): generalize to other diffusers scheduler later
+        from .diffusers_model.schedulers import FlowMatchSDEDiscreteScheduler
+
+        scheduler = FlowMatchSDEDiscreteScheduler.from_pretrained(
+            pretrained_model_name_or_path=model_path, subfolder="scheduler"
+        )
+        return scheduler
 
     def _build_rollout(self):
         # 1. parse rollout and huggingface model config
@@ -551,23 +551,6 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             f"After building {self.config.rollout.name} rollout", logger=logger
         )
 
-        # Full params
-        if (
-            torch.distributed.get_world_size() == 1
-            and fsdp_version(self.actor_module_fsdp) == 1
-        ):
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.FULL_STATE_DICT,
-                state_dict_config=FullStateDictConfig(),
-            )
-        elif fsdp_version(self.actor_module_fsdp) == 1:
-            FSDP.set_state_dict_type(
-                self.actor_module_fsdp,
-                state_dict_type=StateDictType.SHARDED_STATE_DICT,
-                state_dict_config=ShardedStateDictConfig(),
-            )
-
         # used for LoRA
         self.base_sync_done = True
         self.layered_summon = self.config.rollout.get("layered_summon", False)
@@ -607,9 +590,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
 
         if peft_config is not None and self.base_sync_done:
-            per_tensor_param = (
-                params.items() if isinstance(params, dict) else params
-            )  # Fixed: handle dict case
+            per_tensor_param = params.items() if isinstance(params, dict) else params
         else:
             device = get_device_id()  # used when fsdp2 set cpu_offload_policy
             per_tensor_param = (
@@ -665,35 +646,29 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
         use_shm = self.config.model.get("use_shm", False)
         use_fused_kernels = self.config.model.get("use_fused_kernels", False)
 
-        if self._is_actor or self._is_rollout:
-            # we need the model for actor and rollout
-            if self._is_actor:
-                optim_config = self.config.actor.optim
-                fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
-            else:
-                optim_config = None
-                fsdp_config = FSDPEngineConfig()
+        if self._is_actor:
+            optim_config = self.config.actor.optim
+            fsdp_config = omega_conf_to_dataclass(self.config.actor.fsdp_config)
 
             local_path = copy_to_local(self.config.model.path, use_shm=use_shm)
-            (
-                self.actor_module_fsdp,
-                self.actor_optimizer,
-                self.actor_lr_scheduler,
-                self.scheduler,
-            ) = self._build_model_optimizer(
-                model_path=local_path,
-                fsdp_config=fsdp_config,
-                optim_config=optim_config,
-                override_model_config=override_model_config,
-                use_fused_kernels=use_fused_kernels,
-                enable_gradient_checkpointing=self.config.model.get(
-                    "enable_gradient_checkpointing", False
-                ),
-                role="actor",
-                enable_activation_offload=self.config.model.get(
-                    "enable_activation_offload", False
-                ),
+            self.actor_module_fsdp, self.actor_optimizer, self.actor_lr_scheduler = (
+                self._build_model_optimizer(
+                    model_path=local_path,
+                    fsdp_config=fsdp_config,
+                    optim_config=optim_config,
+                    override_model_config=override_model_config,
+                    use_fused_kernels=use_fused_kernels,
+                    enable_gradient_checkpointing=self.config.model.get(
+                        "enable_gradient_checkpointing", False
+                    ),
+                    role="actor",
+                    enable_activation_offload=self.config.model.get(
+                        "enable_activation_offload", False
+                    ),
+                )
             )
+
+            self.scheduler = self._build_scheduler(model_path=local_path)
 
             # get the original unwrapped module
             if fsdp_version(self.actor_module_fsdp) == 1:
@@ -740,6 +715,7 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
                 use_fused_kernels=use_fused_kernels,
                 role="ref",
             )[0]
+            self.scheduler = self._build_scheduler(model_path=local_path)
             OmegaConf.set_struct(self.config.ref, True)
             with open_dict(self.config.ref):
                 self.config.ref.use_fused_kernels = use_fused_kernels
@@ -902,9 +878,17 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
             )
             return data
         assert self._is_ref
-        raise NotImplementedError(
-            "Ref worker log_prob computation is not implemented yet"
-        )
+        micro_batch_size = self.config.ref.log_prob_micro_batch_size_per_gpu
+        data.meta_info["micro_batch_size"] = micro_batch_size
+
+        data = data.to(
+            "cpu"
+        )  # data will to device with each micro batch on ref.compute_log_prob
+        _, output = self.ref_policy.compute_log_prob(data=data)
+        output = DataProto.from_dict(tensors={"ref_prev_sample_mean": output})
+
+        output = output.to("cpu")
+        return output
 
     @register(dispatch_mode=Dispatch.ONE_TO_ALL)
     def save_checkpoint(self, local_path, global_step=0, max_ckpt_to_keep=None):
@@ -1032,5 +1016,81 @@ class DiffusersActorRolloutRefWorker(Worker, DistProfilerExtension):
 
 
 class AsyncDiffusersActorRolloutRefWorker(DiffusersActorRolloutRefWorker):
-    def __init__(self, config: DictConfig, role: str, **kwargs):
-        raise NotImplementedError
+    @register(dispatch_mode=Dispatch.ONE_TO_ALL, execute_mode=Execute.RANK_ZERO)
+    def get_params(self):
+        base_sync_done = getattr(self, "base_sync_done", True)
+        peft_config = None
+        peft_model = getattr(
+            self.actor_module_fsdp, "_fsdp_wrapped_module", self.actor_module_fsdp
+        )
+        if hasattr(peft_model, "peft_config"):  # LoRA
+            peft_config = peft_model.peft_config.get("default", None)
+            params = collect_lora_params(
+                module=self.actor_module_fsdp,
+                layered_summon=self.config.rollout.get("layered_summon", False),
+                base_sync_done=base_sync_done,
+            )
+        else:
+            params = self.actor_module_fsdp.state_dict()
+
+        log_gpu_memory_usage("Before offload_fsdp_model_to_cpu", logger=logger)
+        if self._is_offload_param:
+            offload_fsdp_model_to_cpu(self.actor_module_fsdp)
+        log_gpu_memory_usage("After offload_fsdp_model_to_cpu", logger=logger)
+
+        if peft_config is not None and base_sync_done:
+            per_tensor_param = params.items() if isinstance(params, dict) else params
+        else:
+            device = get_device_id()  # used when fsdp2 set cpu_offload_policy
+            per_tensor_param = (
+                (
+                    name,
+                    param.to(device, non_blocking=True).full_tensor()
+                    if isinstance(param, DTensor)
+                    else param,
+                )
+                for name, param in params.items()
+            )
+        return per_tensor_param, peft_config
+
+    @register(dispatch_mode=Dispatch.ALL_TO_ALL)
+    async def update_weights(self, per_tensor_param, peft_config):
+        await self.rollout.update_weights(
+            per_tensor_param,
+            peft_config=peft_config,
+            base_sync_done=self.base_sync_done,
+        )
+
+    @register(
+        dispatch_mode=make_nd_compute_dataproto_dispatch_fn(mesh_name="rollout"),
+        blocking=False,
+    )
+    def generate_sequences(self, prompts):
+        assert self._is_rollout
+        prompts = prompts.to(get_device_id())
+
+        timing_generate: dict[str, float] = {}
+
+        with simple_timer("generate_sequences", timing_generate):
+            output = self.rollout.generate_sequences(prompts=prompts)
+
+        # We calculate the average timing across all ranks
+        # to make sure meta_info["timing"] is the same
+        timing_generate_topk_ratio, timing_generate_min, timing_generate_max = (
+            topk_reduce_ratio_min_max(timing_generate["generate_sequences"])
+        )
+        timing_generate = reduce_timing(timing_generate)
+        timing_reward = output.meta_info.pop("timing_reward", None)
+        if timing_reward is not None:
+            timing_reward = reduce_timing(timing_reward)
+            timing_generate.update(timing_reward)
+        timing_generate.update(
+            {
+                "generation_timing/max": timing_generate_max,
+                "generation_timing/min": timing_generate_min,
+                "generation_timing/topk_ratio": timing_generate_topk_ratio,
+            }
+        )
+        output.meta_info["timing"] = timing_generate
+        output = output.to("cpu")
+        return output

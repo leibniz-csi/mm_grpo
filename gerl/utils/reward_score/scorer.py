@@ -14,7 +14,7 @@
 # ============================================================================
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Union
+from typing import Dict, Optional, Union
 
 import numpy as np
 import torch
@@ -25,14 +25,14 @@ class Scorer(ABC):
     @abstractmethod
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: Optional[List[str]] = None,
-    ) -> Union[List[float], Dict[str, List[float]]]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: Optional[list[str]] = None,
+    ) -> Union[list[float], Dict[str, list[float]]]:
         """Return the scoring value of the images"""
         pass
 
     @staticmethod
-    def array_to_images(images: Union[np.ndarray, torch.Tensor]) -> List[Image.Image]:
+    def array_to_images(images: Union[np.ndarray, torch.Tensor]) -> list[Image.Image]:
         if isinstance(images, torch.Tensor):
             images = images.float().permute(0, 2, 3, 1).cpu().numpy()
         assert images.shape[-1] == 3, "must be in NHWC format"

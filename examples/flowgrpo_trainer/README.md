@@ -9,35 +9,20 @@
 - [x] Flow-GRPO
 - [x] Flow-GRPO-Fast
 
+## Quick Start
 
-## Get Started
-
-### Installation
-
-**Requirements**
-
-We tested with the following machines:
-| GPU | Driver | CUDA |
-|--- | --- | --- |
-| A100 (80GB) | 530.30.02 | 12.2 |
-| H800 (80GB) | 535.161.08 | 12.2 |
-
-
-### Quick Start
-
-**Flow-GRPO / Flow-GRPO-Fast**
-
-Below we provide examples to post-train SD-3.5-M on OCR task using OCR reward.
+Below are examples for post-training SD-3.5-M on an OCR task using the OCR reward.
 
 1. Dataset
 
-Download OCR dataset from [Flow-GRPO](https://github.com/yifan123/flow_grpo/tree/main/dataset/ocr) and place it under `dataset` folder.
+Download the OCR dataset from [Flow-GRPO](https://github.com/yifan123/flow_grpo/tree/main/dataset/ocr) and place it in the `dataset` folder.
 <br>
-During training, denote paths in configs `data.train_files` and `data.val_files`.
+Before training, specify the paths in the configuration parameters `data.train_files` and `data.val_files`.
 
 2. Start Training
 
-We provide scripts for quick start:
+We provide scripts for a quick start using a hybrid engine for coupled actor and rollout:
+
 ```bash
 # SD3 + Flow-GRPO
 bash examples/flowgrpo_trainer/run_sd3.sh
@@ -46,30 +31,24 @@ bash examples/flowgrpo_trainer/run_sd3.sh
 bash examples/flowgrpo_trainer/run_sd3_fast.sh
 ```
 
+## Advanced: Asynchronous Training
+We support different asynchronous training strategies, please refer to [experimental](./experimental/README.md) for more details.
+
 ## Performance
 
-- All experiments were conducted under NVIDIA H800 with memory 80GB/card, with Paddle OCR reward.
+> All experiments were conducted on *NVIDIA H800* GPUs using the Paddle OCR reward.
 
-| model | RL alg. |  cards | batch size | init lr | clip ratio | s/step |
-| --- | --- | --- | --- | --- | --- | --- |
-| SD3.5-M | Flow-GRPO | 1 | 8 | 3e-4 | 1e-4 | 84 |
-| SD3.5-M | Flow-GRPO-Fast | 1 | 8 | 3e-4 | 1e-5 | 58 |
-| SD3.5-M | Flow-GRPO-Fast | 8 | 64 | 3e-4 | 1e-5 | 291 |
+### Training Throughput
 
-- Validation reward curve:
-
-
-| model | RL alg. |  cards  | curve |
-| --- | --- | --- | --- |
-| SD3.5-M | Flow-GRPO | 1 | <img width=512 alt="val_reward_curve" src="https://github.com/user-attachments/assets/f8c3e0f7-ebc0-4b3a-b25b-c7e349feb69f" />|
-| SD3.5-M | Flow-GRPO-Fast | 1 | <img width=512 alt="val_reward_curve" src="https://github.com/user-attachments/assets/4289e040-a3a0-48d8-b2c3-a8d08f27baa4" />|
-| SD3.5-M | Flow-GRPO-Fast | 8 | <img width=512 src="https://github.com/user-attachments/assets/db1b84be-d258-441c-88af-8e86d82aa2a8" /> |
+| Model   | Algorithm      | # Cards | Batch Size | Learning Rate | Throughput | Script |
+| ------- | -------------- | ------  | ---------- | ------------- | ---------- | ------ |
+| SD3.5-M | Flow-GRPO      | 8       | 64         | 3e-4          | 0.4        | [run_sd3.sh](./run_sd3.sh) |
+| SD3.5-M | Flow-GRPO-Fast | 8       | 64         | 1e-4          | 1.0        | [run_sd3_fast.sh](./run_sd3_fast.sh) |
 
 
-- Some visualization comparison for Flow-GRPO-Fast:
+### Validation Reward Curve
 
-| model | RL alg. |  cards | prompt | rendering (before RL)| rendering (after RL)
-| --- | --- | --- | --- | --- | --- |
-| SD3.5-M | Flow-GRPO | 1  | `A close-up of a sleek smartwatch on a wrist, the screen displaying "Step Goal Achieved" with a celebratory animation, set against a blurred cityscape at dusk, capturing the moment of accomplishment.` | Step 0: <img width=400 src="https://github.com/user-attachments/assets/d6b1cf69-b0d1-4ecb-92c5-c32fc4a8676c" />|  Step 141: <img width=400 src="https://github.com/user-attachments/assets/e4208ff7-2e49-4767-9578-320f12e4d4dd" />|
-| SD3.5-M | Flow-GRPO-Fast | 1  | `A high-fashion runway with a sleek, modern backdrop displaying "Spring Collection 2024". Models walk confidently on the catwalk, showcasing vibrant, floral prints and pastel tones, under soft, ambient lighting that enhances the fresh, spring vibe.`|Step 0: <img src="https://github.com/user-attachments/assets/7cf01b78-b310-4473-9ab7-22f5eff97565" width=400> | Step 104:  <img width=400 src="https://github.com/user-attachments/assets/6b02ef1c-3da7-44cd-9850-9114635dea4f" />|
-| SD3.5-M | Flow-GRPO-Fast | 8  | `A beautifully crafted birthday cake topper shaped like "30 Years Young", adorned with sparkly frosting and shimmering decorations, set against a backdrop of a cozy, candlelit birthday party.`| Step 0: <img width=400 src="https://github.com/user-attachments/assets/d1e5b85f-4b8c-4645-94e9-8841b64de8e7" />| Step 97: <img width=400 src="https://github.com/user-attachments/assets/51a15d07-6990-420a-a509-0e756b790e40" /> |
+| Model   | Algorithm      | # Cards | Reward Curve |
+| ------- | -----------    | ------- | ------------- |
+| SD3.5-M | Flow-GRPO      | 8       | <img width=512 src="https://github.com/user-attachments/assets/e559bb07-bca0-4672-b849-f665c5cbc0d1" /> |
+| SD3.5-M | Flow-GRPO-Fast | 8       | <img width=512 src="https://github.com/user-attachments/assets/24393445-81e2-43dd-9be9-ec24d85f58dc" /> |

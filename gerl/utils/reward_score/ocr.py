@@ -15,7 +15,7 @@
 # limitations under the License.
 # ============================================================================
 
-from typing import List, Union
+from typing import Union
 
 import numpy as np
 import torch
@@ -44,9 +44,9 @@ class PaddleOCRScorer(Scorer):
     @torch.no_grad()
     def __call__(
         self,
-        images: Union[List[Image.Image], np.ndarray, torch.Tensor],
-        prompts: List[str],
-    ) -> List[float]:
+        images: Union[list[Image.Image], np.ndarray, torch.Tensor],
+        prompts: list[str],
+    ) -> list[float]:
         """
         Calculate OCR reward
         :param images: List of input images (PIL or numpy format)
@@ -111,19 +111,3 @@ def compute_score(images, prompts):
     scores = scorer(images, prompts)
 
     return scores
-
-
-def test_paddle_ocr_scorer():
-    example_image_path = "assets/generated_nyc.jpg"
-    example_image = Image.open(example_image_path)
-    # original prompt: 'New York Skyline with "Hello World" written with fireworks on the sky'
-    example_prompt = "Hello World"
-    # Instantiate scorer
-    scorer = PaddleOCRScorer()
-    # Call scorer and print result
-    reward = scorer([example_image], [example_prompt])
-    print(f"OCR Reward: {reward}")
-
-
-if __name__ == "__main__":
-    test_paddle_ocr_scorer()

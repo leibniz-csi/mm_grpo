@@ -65,9 +65,9 @@ python3 -m gerl.trainer.main_flowgrpo \
 
 **Step4: tips and testing.**
 
-You'd better have a unit test script for your scorer before applying your reward to run training, and add your testing in `tests/reward_score/run_reward_fns.sh`.
+Before applying your custom reward in training, create a unit test for your scorer and add it to `tests/reward_score/run_reward_fns.py` and `tests/reward_score/run_reward_fns.sh`.
 
-For example, `test_paddle_ocr_scorer` in `gerl/utils/reward_score/ocr.py` and `test_qwen_vl_ocr_vllm_scorer` in `gerl/utils/reward_score/vllm.py`.
+For example, `run_paddle_ocr_scorer` and `run_qwen_vl_ocr_vllm_scorer` in `tests/reward_score/run_reward_fns.py`.
 
 ## Examples
 ### Model-based or Rule-based Reward (CPU only)
