@@ -144,6 +144,7 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
             queries, self.model_path, self.base_url
         )
 
+        logger.debug(f"VLLM output results: {results}")
         rewards = self.calculate_score(results, prompts)
         return rewards
 
