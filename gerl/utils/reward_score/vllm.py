@@ -235,7 +235,7 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
         results = await self.async_process_queries(
             queries, self.model_path, self.base_url
         )
-
+        logger.debug("VLLM output: %s", results)
         rewards = self.calculate_score(results)
         return rewards
 
