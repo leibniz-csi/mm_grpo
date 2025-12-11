@@ -24,7 +24,7 @@ A fast and easy-to-use library to support RL training for multi-modal generative
 
 ### Supported Rewards
 
-- [x] [PaddleOCR](https://arxiv.org/abs/2109.03144)
+- [x] [PaddleOCR](https://arxiv.org/abs/2507.05595)
 - [x] [Qwen2.5VL-OCR](https://arxiv.org/abs/2502.13923)
 - [x] [UnifiedReward](https://arxiv.org/abs/2503.05236)
 
@@ -43,7 +43,7 @@ A fast and easy-to-use library to support RL training for multi-modal generative
   pip install -r requirements.txt
   ```
 
-- Install the `verl` main branch: 
+- Install the `verl` main branch:
   ```bash
   git clone https://github.com/volcengine/verl.git && cd verl && pip install -e .
   ```
