@@ -62,6 +62,6 @@ def run_unified_reward_vllm_scorer():
 
 if __name__ == "__main__":
     run_multi_scorer()
-    run_paddle_ocr_scorer
+    run_paddle_ocr_scorer()
     run_qwen_vl_ocr_vllm_scorer()
     run_unified_reward_vllm_scorer()
