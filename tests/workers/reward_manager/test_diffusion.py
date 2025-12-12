@@ -59,15 +59,16 @@ class TestDiffusionRewardManager:
             None,
         )
 
-    def test_call(self, mock_data: DataProto):
+    @pytest.mark.asyncio
+    async def test_call(self, mock_data: DataProto):
         # test return dict result
-        dict_result = self.reward_manager(mock_data, return_dict=True)
+        dict_result = await self.reward_manager(mock_data, return_dict=True)
         expected_dict_keys = ["reward_tensor", "reward_extra_info"]
         for key in expected_dict_keys:
             assert key in dict_result, f"Key {key} not found in dict result."
 
         # test return tensor result
-        tensor_result = self.reward_manager(mock_data, return_dict=False)
+        tensor_result = await self.reward_manager(mock_data, return_dict=False)
         assert isinstance(tensor_result, torch.Tensor), (
             "Tensor result is not a torch.Tensor."
         )
@@ -80,7 +81,7 @@ class TestDiffusionRewardManager:
             [1.0] * len(mock_data.batch["responses"])
         )
         with pytest.raises(NotImplementedError):
-            self.reward_manager(mock_data)
+            await self.reward_manager(mock_data)
 
 
 class TestDiffusionBatchRewardManager:
@@ -91,15 +92,16 @@ class TestDiffusionBatchRewardManager:
             None,
         )
 
-    def test_call(self, mock_data: DataProto):
+    @pytest.mark.asyncio
+    async def test_call(self, mock_data: DataProto):
         # test return dict result
-        dict_result = self.reward_manager(mock_data, return_dict=True)
+        dict_result = await self.reward_manager(mock_data, return_dict=True)
         expected_dict_keys = ["reward_tensor", "reward_extra_info"]
         for key in expected_dict_keys:
             assert key in dict_result, f"Key {key} not found in dict result."
 
         # test return tensor result
-        tensor_result = self.reward_manager(mock_data, return_dict=False)
+        tensor_result = await self.reward_manager(mock_data, return_dict=False)
         assert isinstance(tensor_result, torch.Tensor), (
             "Tensor result is not a torch.Tensor."
         )
@@ -112,4 +114,4 @@ class TestDiffusionBatchRewardManager:
             [1.0] * len(mock_data.batch["responses"])
         )
         with pytest.raises(NotImplementedError):
-            self.reward_manager(mock_data)
+            await self.reward_manager(mock_data)
