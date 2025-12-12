@@ -44,6 +44,7 @@ class VLLMScorer(Scorer):
         executor = getattr(self, "_executor", None)
         if executor is not None:
             executor.shutdown(wait=True)
+
     async def async_process_queries(
         self, queries: list[list[dict]], model_path: str, base_url: str
     ) -> list[str]:
@@ -143,8 +144,8 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         results = await self.async_process_queries(
             queries, self.model_path, self.base_url
         )
+        logger.debug("VLLM output: %s", results)
 
-        logger.debug(f"VLLM output results: {results}")
         rewards = self.calculate_score(results, prompts)
         return rewards
 
@@ -237,6 +238,7 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
             queries, self.model_path, self.base_url
         )
         logger.debug("VLLM output: %s", results)
+
         rewards = self.calculate_score(results)
         return rewards
 

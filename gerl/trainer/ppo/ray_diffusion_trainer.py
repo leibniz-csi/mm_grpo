@@ -59,7 +59,7 @@ from .metric_utils import (
     compute_diffusion_throughout_metrics,
     compute_diffusion_timing_metrics,
 )
-from .reward import CPURewardWorker, compute_reward
+from .reward import CPUAsyncRewardWorker, compute_reward
 
 
 def compute_advantage(
@@ -606,8 +606,10 @@ class RayDiffusionPPOTrainer:
             or self.config.reward_model.launch_reward_fn_async
         ):
             # use a lightweight CPU reward worker for async reward compute
-            self.rm_wg = CPURewardWorker.remote(self.config, reward_fn=self.reward_fn)
-            self.val_rm_wg = CPURewardWorker.remote(
+            self.rm_wg = CPUAsyncRewardWorker.remote(
+                self.config, reward_fn=self.reward_fn
+            )
+            self.val_rm_wg = CPUAsyncRewardWorker.remote(
                 self.config, reward_fn=self.val_reward_fn
             )
             self.compute_reward_async = self.rm_wg.compute_reward

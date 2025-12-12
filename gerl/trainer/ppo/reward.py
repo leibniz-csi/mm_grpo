@@ -212,7 +212,7 @@ def compute_reward_async(data: DataProto, config=None, tokenizer=None, reward_fn
 
 
 @ray.remote(num_cpus=1)
-class CPURewardWorker:
+class CPUAsyncRewardWorker:
     """
     A lightweight Ray actor that computes rewards using a reward manager.
     Typically used for remote API calls.
