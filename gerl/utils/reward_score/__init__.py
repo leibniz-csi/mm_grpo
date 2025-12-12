@@ -75,7 +75,7 @@ class DefaultScorer:
                     f"reward_fn is not specified, and reward function is not implemented for {data_source=}"
                 )
 
-    def __call__(
+    async def __call__(
         self,
         data_source,
         solution_str,
@@ -85,7 +85,7 @@ class DefaultScorer:
     ):
         if self.scorer is None:  # Initialize scorer on the first call
             self.get_scorer(data_source, extra_info=extra_info)
-        res = self.scorer(solution_str, ground_truth)
+        res = await self.scorer(solution_str, ground_truth)
 
         if isinstance(res, dict):
             return res

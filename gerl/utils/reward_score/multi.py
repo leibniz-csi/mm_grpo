@@ -14,7 +14,7 @@
 # ============================================================================
 
 import importlib
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Optional, Union
 
 import numpy as np
 import torch
@@ -36,7 +36,7 @@ AVAILABLE_SCORERS = {
 
 
 class MultiScorer(Scorer):
-    def __init__(self, scorers: Dict[str, float]) -> None:
+    def __init__(self, scorers: dict[str, float]) -> None:
         self.score_fn: dict[str, Callable] = dict()
         self.scorers = scorers
         self.init_scorer_cls()
@@ -49,11 +49,11 @@ class MultiScorer(Scorer):
             cls = getattr(module, cls)
             self.score_fn[score_name] = cls()
 
-    def __call__(
+    async def __call__(
         self,
         images: Union[list[Image.Image], np.ndarray, torch.Tensor],
         prompts: Optional[list[str]] = None,
-    ) -> Dict[str, list[float]]:
+    ):
         """
         Calculate reward scores from multiples scorers
         :param images: List of input images (PIL or numpy format)
@@ -63,7 +63,7 @@ class MultiScorer(Scorer):
         score_details = dict()
         total_scores: list[float] = list()
         for score_name, weight in self.scorers.items():
-            scores = self.score_fn[score_name](images, prompts=prompts)
+            scores = await self.score_fn[score_name](images, prompts=prompts)
             score_details[score_name] = scores
             weighted_scores = [weight * score for score in scores]
 
@@ -79,11 +79,11 @@ class MultiScorer(Scorer):
         return score_details
 
 
-def compute_score(images, prompts, scorers: Dict[str, float]):
+async def compute_score(images, prompts, scorers: dict[str, float]):
     """
     Compute multiple reward scores for a batch of images and prompts.
     """
     scorer = MultiScorer(scorers)
-    scores = scorer(images, prompts)
+    scores = await scorer(images, prompts)
 
     return scores

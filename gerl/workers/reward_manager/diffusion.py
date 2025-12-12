@@ -55,7 +55,7 @@ class DiffusionRewardManager(AbstractRewardManager):
         )
         self.reward_fn = reward_fn
 
-    def __call__(
+    async def __call__(
         self, data: DataProto, return_dict: bool = False
     ) -> torch.Tensor | dict[str, Any]:
         """We will expand this function gradually based on the available datasets"""
@@ -88,7 +88,7 @@ class DiffusionRewardManager(AbstractRewardManager):
 
             if isinstance(ground_truth, str):
                 ground_truth = [ground_truth]
-            score = self.compute_score(
+            score = await self.compute_score(
                 data_source=data_source,
                 solution_str=response_images,
                 ground_truth=ground_truth,
@@ -158,7 +158,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
         self.reward_fn_key = reward_fn_key
         self.reward_fn = reward_fn
 
-    def __call__(
+    async def __call__(
         self, data: DataProto, return_dict: bool = False
     ) -> torch.Tensor | dict[str, Any]:
         """We will expand this function gradually based on the available datasets"""
@@ -189,7 +189,7 @@ class DiffusionBatchRewardManager(AbstractRewardManager):
             extras[i]["rollout_reward_scores"] = rollout_reward_scores[i]
             extras[i]["reward_fn"] = self.reward_fn
 
-        scores = self.compute_score(
+        scores = await self.compute_score(
             data_source=data_sources[0],
             solution_str=response_images,
             ground_truth=ground_truths,

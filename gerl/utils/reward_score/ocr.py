@@ -41,11 +41,11 @@ class PaddleOCRScorer(Scorer):
         )
 
     @torch.no_grad()
-    def __call__(
+    async def __call__(
         self,
         images: Union[list[Image.Image], np.ndarray, torch.Tensor],
         prompts: list[str],
-    ) -> list[float]:
+    ):
         """
         Calculate OCR reward
         :param images: List of input images (PIL or numpy format)
@@ -97,11 +97,11 @@ class PaddleOCRScorer(Scorer):
         return rewards
 
 
-def compute_score(images, prompts):
+async def compute_score(images, prompts):
     """
     Compute OCR reward score using PaddleOCR for a batch of images and prompts.
     """
     scorer = PaddleOCRScorer()
-    scores = scorer(images, prompts)
+    scores = await scorer(images, prompts)
 
     return scores
