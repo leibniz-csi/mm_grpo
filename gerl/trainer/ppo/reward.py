@@ -24,6 +24,7 @@ import ray
 import torch
 from omegaconf import DictConfig
 from verl import DataProto
+from verl.utils.ray_utils import get_event_loop
 from verl.utils.transferqueue_utils import tqbridge
 from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
@@ -168,8 +169,12 @@ def load_reward_manager(
     )
 
 
+def compute_reward(data: DataProto, reward_fn: AbstractRewardManager):
+    return get_event_loop().run_until_complete(compute_reward_async(data, reward_fn))
+
+
 @tqbridge(put_data=False)
-def compute_reward(
+async def compute_reward_async(
     data: DataProto, reward_fn: AbstractRewardManager
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
@@ -181,31 +186,36 @@ def compute_reward(
         Tuple of reward tensor and extra info dictionary.
     """
     try:
-        reward_result = reward_fn(data, return_dict=True)
+        reward_result = await reward_fn(data, return_dict=True)
         reward_tensor = reward_result["reward_tensor"]
         reward_extra_infos_dict = reward_result.get("reward_extra_info", {})
     except Exception as e:
         print(f"Error in reward_fn: {e}")
-        reward_tensor = reward_fn(data)
+        reward_tensor = await reward_fn(data)
         reward_extra_infos_dict = {}
 
     return reward_tensor, reward_extra_infos_dict
 
 
 @ray.remote(num_cpus=1)
-def compute_reward_async(data: DataProto, config=None, tokenizer=None, reward_fn=None):
+class CPUAsyncRewardWorker:
     """
-    Load the reward manager and compute the reward for a batch of data.
-    This is meant to be run in a separate Ray worker.
+    A lightweight Ray actor that computes rewards using a reward manager.
+    Typically used for remote API calls.
     """
-    if reward_fn is None:
-        assert config is not None, "config must not be None when reward_fn is None"
 
-        reward_fn = load_reward_manager(
-            config,
-            tokenizer,
-            num_examine=0,
-            **config.reward_model.get("reward_kwargs", {}),
-        )
+    def __init__(
+        self, config: DictConfig, tokenizer: Any = None, reward_fn: Any = None
+    ):
+        if reward_fn is None:
+            self.reward_fn = load_reward_manager(
+                config,
+                tokenizer,
+                num_examine=0,
+                **config.reward_model.get("reward_kwargs", {}),
+            )
+        else:
+            self.reward_fn = reward_fn
 
-    return compute_reward(data, reward_fn)
+    async def compute_reward(self, data: DataProto):
+        return await compute_reward_async(data, self.reward_fn)

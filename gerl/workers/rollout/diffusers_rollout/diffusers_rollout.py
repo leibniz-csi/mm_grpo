@@ -33,7 +33,6 @@ from verl.utils.py_functional import convert_to_regular_types
 from verl.utils.torch_dtypes import PrecisionType
 
 from ....protocol import DataProto
-from ....trainer.ppo.reward import compute_reward_async
 from ....utils.lora import select_lora_modules
 from ...config import DiffusersModelConfig, DiffusionRolloutConfig
 from ...diffusers_model import (
@@ -191,12 +190,11 @@ class DiffusersSyncRollout(BaseRollout):
             )
             # launch async micro_batch reward computing
             if self.config.with_reward:
-                future_reward = compute_reward_async.remote(
+                future_reward = reward_fn.remote(
                     data=DataProto(
                         batch=result.select("responses"),
                         non_tensor_batch=micro_batch.non_tensor_batch,
-                    ),
-                    reward_fn=reward_fn,
+                    )
                 )
                 future_rewards.append(future_reward)
 

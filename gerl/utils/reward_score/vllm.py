@@ -18,6 +18,7 @@ import base64
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from typing import Optional, Union
 
@@ -36,6 +37,13 @@ logger = logging.getLogger(__name__)
 class VLLMScorer(Scorer):
     def __init__(self, base_url: Optional[str] = None) -> None:
         self.aclient = AsyncOpenAI(base_url=base_url, api_key="EMPTY")
+        self._executor = ThreadPoolExecutor(max_workers=4)
+
+    def __del__(self):
+        # Properly shut down the ThreadPoolExecutor to avoid resource leaks
+        executor = getattr(self, "_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=True)
 
     async def async_process_queries(
         self, queries: list[list[dict]], model_path: str, base_url: str
@@ -66,15 +74,21 @@ class VLLMScorer(Scorer):
         return completion.choices[0].message.content
 
     @torch.no_grad()
-    def __call__(
+    async def __call__(
         self,
         images: Union[list[Image.Image], np.ndarray, torch.Tensor],
         prompts: list[str],
-    ) -> list[float]:
+    ):
         raise NotImplementedError("This method should be implemented in subclasses.")
 
-    @staticmethod
-    def pil_image_to_base64(image: Image.Image) -> str:
+    async def pil_image_to_base64(self, image: Image.Image) -> str:
+        # To avoid blocking the event loop, run the conversion in a thread pool
+        base64_image = await get_event_loop().run_in_executor(
+            self._executor, self._pil_image_to_base64, image
+        )
+        return base64_image
+
+    def _pil_image_to_base64(self, image: Image.Image) -> str:
         buffered = BytesIO()
         image.save(buffered, format="PNG")
         encoded_image_text = base64.b64encode(buffered.getvalue()).decode("utf-8")
@@ -97,11 +111,11 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
         super().__init__(base_url=self.base_url)
 
     @torch.no_grad()
-    def __call__(
+    async def __call__(
         self,
         images: Union[list[Image.Image], np.ndarray, torch.Tensor],
         prompts: Optional[list[str]] = None,
-    ) -> list[float]:
+    ):
         """
         Calculate OCR reward.
 
@@ -122,11 +136,13 @@ class QwenVLOCRVLLMScorer(VLLMScorer):
                 images = images.unsqueeze(0)
             images = self.array_to_images(images)
 
-        images_base64 = [self.pil_image_to_base64(image) for image in images]
+        images_base64 = await asyncio.gather(
+            *[self.pil_image_to_base64(image) for image in images]
+        )
         queries = [self.prepare_query(image_base64) for image_base64 in images_base64]
 
-        results = get_event_loop().run_until_complete(
-            self.async_process_queries(queries, self.model_path, self.base_url)
+        results = await self.async_process_queries(
+            queries, self.model_path, self.base_url
         )
         logger.debug("VLLM output: %s", results)
 
@@ -191,11 +207,11 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
         super().__init__(base_url=self.base_url)
 
     @torch.no_grad()
-    def __call__(
+    async def __call__(
         self,
         images: Union[list[Image.Image], np.ndarray, torch.Tensor],
         prompts: Optional[list[str]] = None,
-    ) -> list[float]:
+    ):
         """
         Calculate Image reward based on caption alignment and image quality.
 
@@ -213,14 +229,16 @@ class UnifiedRewardVLLMScorer(VLLMScorer):
                 images = images.unsqueeze(0)
             images = self.array_to_images(images)
 
-        images_base64 = [self.pil_image_to_base64(image) for image in images]
+        images_base64 = await asyncio.gather(
+            *[self.pil_image_to_base64(image) for image in images]
+        )
         queries = [
             self.prepare_query(image_base64, prompt)
             for image_base64, prompt in zip(images_base64, prompts)
         ]
 
-        results = get_event_loop().run_until_complete(
-            self.async_process_queries(queries, self.model_path, self.base_url)
+        results = await self.async_process_queries(
+            queries, self.model_path, self.base_url
         )
         logger.debug("VLLM output: %s", results)
 

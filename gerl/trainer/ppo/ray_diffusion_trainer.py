@@ -59,7 +59,7 @@ from .metric_utils import (
     compute_diffusion_throughout_metrics,
     compute_diffusion_timing_metrics,
 )
-from .reward import compute_reward, compute_reward_async
+from .reward import CPUAsyncRewardWorker, compute_reward
 
 
 def compute_advantage(
@@ -433,7 +433,7 @@ class RayDiffusionPPOTrainer:
 
             if not self.async_rollout_manager:
                 test_output_gen_batch = self._gen_next_batch(
-                    test_gen_batch, self.val_reward_fn
+                    test_gen_batch, reward_fn=self.compute_val_reward_async
                 )
                 if (
                     self.async_rollout_mode
@@ -459,10 +459,10 @@ class RayDiffusionPPOTrainer:
                 reward_extra_info = test_output_gen_batch.non_tensor_batch
             else:
                 # evaluate using reward_function
-                result = self.val_reward_fn(test_batch, return_dict=True)
-                reward_tensor = result["reward_tensor"]
-                if "reward_extra_info" in result:
-                    reward_extra_info = result["reward_extra_info"]
+                reward_tensor, reward_extra_info = compute_reward(
+                    test_batch, self.val_reward_fn
+                )
+
             scores = reward_tensor.tolist()
             sample_scores.extend(scores)
 
@@ -598,6 +598,26 @@ class RayDiffusionPPOTrainer:
                 config=self.config.reward_model,
             )
             self.resource_pool_to_cls[resource_pool][str(Role.RewardModel)] = rm_cls
+            self.rm_wg = None
+            self.compute_reward_async = None
+            self.compute_val_reward_async = None
+        elif (
+            self.config.actor_rollout_ref.rollout.with_reward
+            or self.config.reward_model.launch_reward_fn_async
+        ):
+            # use a lightweight CPU reward worker for async reward compute
+            self.rm_wg = CPUAsyncRewardWorker.remote(
+                self.config, reward_fn=self.reward_fn
+            )
+            self.val_rm_wg = CPUAsyncRewardWorker.remote(
+                self.config, reward_fn=self.val_reward_fn
+            )
+            self.compute_reward_async = self.rm_wg.compute_reward
+            self.compute_val_reward_async = self.val_rm_wg.compute_reward
+        else:
+            self.rm_wg = None
+            self.compute_reward_async = None
+            self.compute_val_reward_async = None
 
         # initialize WorkerGroup
         # NOTE: if you want to use a different resource pool for each role, which can support different parallel size,
@@ -655,7 +675,6 @@ class RayDiffusionPPOTrainer:
                 assert str(Role.ActorRolloutRef) in all_wg, f"{all_wg.keys()=}"
                 self.ref_policy_wg = all_wg[str(Role.ActorRolloutRef)]
 
-        self.rm_wg = None
         # initalization of rm_wg will be deprecated in the future
         if self.use_rm:
             self.rm_wg = all_wg[str(Role.RewardModel)]
@@ -905,7 +924,9 @@ class RayDiffusionPPOTrainer:
                 # one-step-off async policy, start first async generation
                 if is_first_step and self.one_step_off_policy:
                     # Start the first asynchronous generation task.
-                    batch_data_future = self._gen_next_batch(gen_batch, self.reward_fn)
+                    batch_data_future = self._gen_next_batch(
+                        gen_batch, self.compute_reward_async
+                    )
                     is_first_step = False
                     continue
 
@@ -920,11 +941,11 @@ class RayDiffusionPPOTrainer:
                             # update weights and async next generation
                             if not is_last_step:
                                 batch_data_future = self._gen_next_batch(
-                                    gen_batch, self.reward_fn
+                                    gen_batch, self.compute_reward_async
                                 )
                         elif not self.async_rollout_manager:
                             gen_batch_output = self._gen_next_batch(
-                                gen_batch, self.reward_fn
+                                gen_batch, self.compute_reward_async
                             )
                             # Currently, non-one-step-off async policy does not really run async rollout.
                             if self.async_rollout_mode:
@@ -949,9 +970,8 @@ class RayDiffusionPPOTrainer:
                                 raise NotImplementedError  # TODO： reward model worker
 
                             if self.config.reward_model.launch_reward_fn_async:
-                                future_reward = compute_reward_async.remote(
-                                    data=batch,
-                                    config=self.config,
+                                future_reward = self.compute_reward_async.remote(
+                                    data=batch
                                 )
                             else:
                                 reward_tensor, reward_extra_infos_dict = compute_reward(

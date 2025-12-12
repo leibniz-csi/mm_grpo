@@ -18,6 +18,8 @@ This script demonstrates how to use various reward scorers.
 Please refer to testing script `./run_reward_fns.sh` for server setup details.
 """
 
+import asyncio
+
 from PIL import Image
 
 from gerl.utils.reward_score import multi, ocr, vllm
@@ -31,7 +33,7 @@ def run_multi_scorer():
     prompts = ["OCR"] * len(images)
     pil_images = [Image.open(img) for img in images]
     # Call scorer and print result
-    print(scorer(images=pil_images, prompts=prompts))
+    print(asyncio.run(scorer(images=pil_images, prompts=prompts)))
 
 
 def run_paddle_ocr_scorer():
@@ -39,7 +41,7 @@ def run_paddle_ocr_scorer():
     example_image = Image.open(example_image_path)
     example_prompt = "OCR"
     scorer = ocr.PaddleOCRScorer()
-    print(scorer([example_image], [example_prompt]))
+    print(asyncio.run(scorer([example_image], [example_prompt])))
 
 
 def run_qwen_vl_ocr_vllm_scorer():
@@ -47,7 +49,7 @@ def run_qwen_vl_ocr_vllm_scorer():
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg", "assets/ocr.jpg"]
     prompts = ["OCR"] * len(images)
     pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images, prompts=prompts))
+    print(asyncio.run(scorer(images=pil_images, prompts=prompts)))
 
 
 def run_unified_reward_vllm_scorer():
@@ -55,11 +57,11 @@ def run_unified_reward_vllm_scorer():
     images = ["assets/good.jpg", "assets/fair.jpg", "assets/poor.jpg"]
     prompts = ["a photo of apple."] * len(images)
     pil_images = [Image.open(img) for img in images]
-    print(scorer(images=pil_images, prompts=prompts))
+    print(asyncio.run(scorer(images=pil_images, prompts=prompts)))
 
 
 if __name__ == "__main__":
     run_multi_scorer()
-    run_paddle_ocr_scorer
+    run_paddle_ocr_scorer()
     run_qwen_vl_ocr_vllm_scorer()
     run_unified_reward_vllm_scorer()
