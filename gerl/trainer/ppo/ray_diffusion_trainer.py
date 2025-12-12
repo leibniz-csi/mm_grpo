@@ -459,10 +459,10 @@ class RayDiffusionPPOTrainer:
                 reward_extra_info = test_output_gen_batch.non_tensor_batch
             else:
                 # evaluate using reward_function
-                result = self.val_reward_fn(test_batch, return_dict=True)
-                reward_tensor = result["reward_tensor"]
-                if "reward_extra_info" in result:
-                    reward_extra_info = result["reward_extra_info"]
+                reward_tensor, reward_extra_info = compute_reward(
+                    test_batch, self.val_reward_fn
+                )
+
             scores = reward_tensor.tolist()
             sample_scores.extend(scores)
 

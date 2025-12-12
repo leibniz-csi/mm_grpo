@@ -24,6 +24,7 @@ import ray
 import torch
 from omegaconf import DictConfig
 from verl import DataProto
+from verl.utils.ray_utils import get_event_loop
 from verl.utils.transferqueue_utils import tqbridge
 from verl.workers.reward_manager.abstract import AbstractRewardManager, RawRewardFn
 
@@ -168,8 +169,12 @@ def load_reward_manager(
     )
 
 
+def compute_reward(data: DataProto, reward_fn: AbstractRewardManager):
+    return get_event_loop().run_until_complete(compute_reward_async(data, reward_fn))
+
+
 @tqbridge(put_data=False)
-async def compute_reward(
+async def compute_reward_async(
     data: DataProto, reward_fn: AbstractRewardManager
 ) -> tuple[torch.Tensor, dict[str, Any]]:
     """
@@ -193,25 +198,6 @@ async def compute_reward(
 
 
 @ray.remote(num_cpus=1)
-def compute_reward_async(data: DataProto, config=None, tokenizer=None, reward_fn=None):
-    """
-    Load the reward manager and compute the reward for a batch of data.
-    This is meant to be run in a separate Ray worker.
-    """
-    if reward_fn is None:
-        assert config is not None, "config must not be None when reward_fn is None"
-
-        reward_fn = load_reward_manager(
-            config,
-            tokenizer,
-            num_examine=0,
-            **config.reward_model.get("reward_kwargs", {}),
-        )
-
-    return compute_reward(data, reward_fn)
-
-
-@ray.remote(num_cpus=1)
 class CPUAsyncRewardWorker:
     """
     A lightweight Ray actor that computes rewards using a reward manager.
@@ -232,4 +218,4 @@ class CPUAsyncRewardWorker:
             self.reward_fn = reward_fn
 
     async def compute_reward(self, data: DataProto):
-        return await compute_reward(data, self.reward_fn)
+        return await compute_reward_async(data, self.reward_fn)
