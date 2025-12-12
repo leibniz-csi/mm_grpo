@@ -40,7 +40,7 @@ def run_paddle_ocr_scorer():
     example_image_path = "assets/ocr.jpg"
     example_image = Image.open(example_image_path)
     example_prompt = "OCR"
-    scorer = ocr.PaddleOCRScorer(use_gpu=False)
+    scorer = ocr.PaddleOCRScorer()
     print(asyncio.run(scorer([example_image], [example_prompt])))
 
 
